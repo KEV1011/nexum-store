@@ -391,6 +391,11 @@ interface RenglonCrudo {
   grande?: boolean;
   /** Columna de la página, cuando se leyó la geometría. */
   columna?: number;
+  /**
+   * Las palabras que el OCR leyó con duda. Ausente = no se sabe (texto plano):
+   * entonces las erratas se corrigen como siempre, con el vocabulario.
+   */
+  dudosas?: string[];
 }
 
 /**
@@ -477,12 +482,12 @@ export function unirPreciosHuerfanos(filas: RenglonCrudo[]): RenglonCrudo[] {
       // parser los toma como descripción del plato que ahora tiene precio.
       const nombre = candidato > 0 ? salida[candidato - 1] : undefined;
       if (mismaColumna && nombre && esNombreDeIngredientes(nombre, prev, fila)) {
-        salida[candidato - 1] = { ...nombre, texto: `${nombre.texto.trim()} ${texto}` };
+        salida[candidato - 1] = { ...nombre, texto: `${nombre.texto.trim()} ${texto}`, ...juntarDudosas(nombre, fila) };
         candidato = null;
         continue;
       }
       if (mismaColumna) {
-        salida[candidato] = { ...prev, texto: `${prev.texto.trim()} ${texto}` };
+        salida[candidato] = { ...prev, texto: `${prev.texto.trim()} ${texto}`, ...juntarDudosas(prev, fila) };
         candidato = null;
         continue;
       }
@@ -497,6 +502,12 @@ export function unirPreciosHuerfanos(filas: RenglonCrudo[]): RenglonCrudo[] {
   }
 
   return salida;
+}
+
+/** Las palabras dudosas de dos renglones que se unen. */
+function juntarDudosas(a: RenglonCrudo, b: RenglonCrudo): { dudosas?: string[] } {
+  if (!a.dudosas && !b.dudosas) return {};
+  return { dudosas: [...(a.dudosas ?? []), ...(b.dudosas ?? [])] };
 }
 
 /**
@@ -576,7 +587,7 @@ export function mejorLectura(primera: CartaLeida, segunda: CartaLeida): CartaLei
 }
 
 export function parsearCartaMedida(
-  lineas: Array<{ texto: string; alto: number; columna?: number }>,
+  lineas: Array<{ texto: string; alto: number; columna?: number; dudosas?: string[] }>,
   altoCuerpo: number,
   esTitulo: (alto: number, cuerpo: number) => boolean,
 ): CartaLeida {
@@ -588,11 +599,18 @@ export function parsearCartaMedida(
     // La columna viaja para que un precio de la columna derecha no se le pegue
     // al último plato de la izquierda.
     ...(l.columna !== undefined && { columna: l.columna }),
+    ...(l.dudosas && { dudosas: l.dudosas }),
   }))));
 }
 
-function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): CartaLeida {
-  return sinErratas(conRol(parsearSinRol(filas)));
+function parsearRenglones(filas: RenglonCrudo[]): CartaLeida {
+  // Con la confianza del OCR, solo se corrige lo que se leyó con DUDA:
+  // «cereza» leída con seguridad es una cereza, no una «cerveza» mal escrita.
+  const conConfianza = filas.some((f) => f.dudosas !== undefined);
+  const dudosas = conConfianza
+    ? new Set(filas.flatMap((f) => f.dudosas ?? []).map(normalizado))
+    : undefined;
+  return sinErratas(conRol(parsearSinRol(filas)), dudosas);
 }
 
 /**
@@ -602,15 +620,16 @@ function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): Ca
  * Va después del rol a propósito: el rol se decide con lo que la carta trae
  * impreso, y una corrección nunca debe cambiar qué ES una fila.
  */
-function sinErratas(carta: CartaLeida): CartaLeida {
+function sinErratas(carta: CartaLeida, dudosas?: Set<string>): CartaLeida {
+  const opciones = dudosas ? { soloEstas: dudosas } : undefined;
   const secciones = new Map<string, string>();
-  for (const sec of carta.secciones) secciones.set(sec, corregirErratas(sec).texto);
+  for (const sec of carta.secciones) secciones.set(sec, corregirErratas(sec, opciones).texto);
   return {
     ...carta,
     secciones: [...new Set(secciones.values())],
     notas: carta.notas.map((n) => ({ ...n, seccion: secciones.get(n.seccion) ?? n.seccion })),
     lineas: carta.lineas.map((l) => {
-      const { texto, erratas } = corregirErratas(l.nombre);
+      const { texto, erratas } = corregirErratas(l.nombre, opciones);
       const seccion = secciones.get(l.seccion) ?? l.seccion;
       if (erratas.length === 0) return { ...l, seccion };
       const aviso = [l.aviso, avisoDeErratas(erratas)].filter(Boolean).join(' ');
@@ -738,6 +757,9 @@ function parsearSinRol(
   // Lo último que se escribió, para pegarle el renglón que lo continúa. Un
   // renglón en blanco o un título lo cortan: separan bloques.
   let ultimo: { tipo: 'plato' | 'nota'; i: number } | null = null;
+  // Los renglones que son el PRECIO DE LA SECCIÓN («BAJOS $8.000 / ALTOS
+  // $10.000»). Se leen como siempre y al final se decide si se reparten.
+  const bloques: BloqueDeSeccion[] = [];
 
   for (let i = 0; i < filas.length; i++) {
     const cruda = filas[i]!.texto.replace(/\s{2,}/g, ' ').trim();
@@ -772,6 +794,17 @@ function parsearSinRol(
         continue;
       }
 
+      // 0c. UNA INDICACIÓN AL CLIENTE: «(No olvides sumar esta michelada a tu
+      // soda o cerveza preferida)». No es un plato ni sus ingredientes: va a
+      // las notas de la sección. Antes, por empezar con paréntesis, se pegaba
+      // a los ingredientes del último plato.
+      const indicacion = grande !== true ? indicacionDeLaCarta(cruda) : null;
+      if (indicacion) {
+        salida.notas.push({ linea, seccion, texto: indicacion });
+        ultimo = { tipo: 'nota', i: salida.notas.length - 1 };
+        continue;
+      }
+
       // 1. EL RENGLÓN QUE CONTINÚA AL DE ARRIBA. La carta parte los
       // ingredientes —y las notas— en dos renglones, y el segundo empieza en
       // minúscula o con una coma: «frescos, porción de papa a la francesa».
@@ -782,12 +815,20 @@ function parsearSinRol(
         const resto = cruda.replace(/^[,;\s]+/, '');
         if (ultimo.tipo === 'nota') {
           const n = salida.notas[ultimo.i]!;
-          n.texto = unirTexto(n.texto, resto);
+          n.texto = unirTexto(n.texto, resto.replace(/\)\s*$/, ''));
           continue;
         }
         const plato = salida.lineas[ultimo.i]!;
         if (tienePrecio(plato)) {
-          plato.descripcion = unirTexto(plato.descripcion ?? '', resto.replace(/^\(|\)$/g, ''));
+          // Una lista con rayas que sigue en el renglón de abajo se une con su
+          // raya: «… - zumo» + «Tajín - chamoy» es «… - zumo - Tajín - chamoy».
+          // (Si empieza en minúscula sigue la PALABRA de arriba —«zumo» + «de
+          // naranja»— y no lleva raya.)
+          const conRaya = plato.descripcion && listaConRayas(plato.descripcion) && !/^[-–—]/.test(resto)
+            && listaConRayas(resto) && !continuaAlDeArriba(resto)
+            ? `- ${resto}`
+            : resto;
+          plato.descripcion = unirTexto(plato.descripcion ?? '', conRaya.replace(/^\(|\)$/g, ''));
           continue;
         }
       }
@@ -856,6 +897,13 @@ function parsearSinRol(
       continue;
     }
 
+    // Puede ser el PRECIO DE LA SECCIÓN. Se lee igual que cualquier fila (si
+    // al final no hay platos a los que repartírselo, se queda así) y se apunta.
+    // (Aunque vaya en letra más grande: un renglón con precio nunca es un
+    // título, y el pie de la sección suele ir destacado.)
+    const bloque = bloqueDePrecios(cruda);
+    if (bloque) bloques.push({ linea, seccion, texto: cruda, ...bloque });
+
     if (!nombre || nombre.length < 2) {
       salida.lineas.push({
         linea, nombre: cruda, precio: null, seccion,
@@ -889,7 +937,174 @@ function parsearSinRol(
     ultimo = { tipo: 'plato', i: salida.lineas.length - 1 };
   }
 
+  repartirPreciosDeSeccion(salida, bloques);
   return salida;
+}
+
+// ── El precio de toda la sección ─────────────────────────────────────────────
+
+interface BloqueDeSeccion {
+  linea: number;
+  seccion: string;
+  texto: string;
+  /** El nombre de cada precio («Bajo», «Alto»); vacío = vale para todos. */
+  etiquetas: string[];
+  precios: number[];
+}
+
+/** «todos a», «precio único», «c/u»: el precio vale para cualquier plato. */
+const ETIQUETA_GENERICA = /^(todos?|todas?|todos a|todas a|a|cualquiera|cualquier|precio|precio unico|valor|cada uno|c u|cu|unidad|und)$/;
+
+/** «BAJOS» → «Bajo»: el tamaño se nombra en singular, como el de un plato. */
+function nombreDeTamano(etiqueta: string): string {
+  const sinS = etiqueta.replace(/s$/i, '');
+  const base = (sinS !== etiqueta && esTokenDeTamano(sinS) ? sinS : etiqueta).toLowerCase();
+  return base.charAt(0).toUpperCase() + base.slice(1);
+}
+
+/**
+ * ¿El renglón es SOLO el precio de la sección? «BAJOS $8.000 / ALTOS
+ * $10.000», «Sencilla 12.000», «Todos a $8.000».
+ *
+ * Se exige que cada precio lleve delante un nombre de tamaño («bajo», «alto»,
+ * «copa», «grande»…) y que no quede NADA más en el renglón; o un solo precio
+ * con una etiqueta que diga que vale para todos. «Tequila 8.000» no lo es: es
+ * un plato.
+ */
+export function bloqueDePrecios(texto: string): { etiquetas: string[]; precios: number[] } | null {
+  const numeros = numerosDeLinea(texto);
+  if (numeros.length === 0 || numeros.length > 6 || numeros.some((n) => !n.esPrecio)) return null;
+  const etiquetas: string[] = [];
+  let desde = 0;
+  for (const n of numeros) {
+    etiquetas.push(texto.slice(desde, n.inicio).replace(/[$:|/=\-–—.,]+/g, ' ').replace(/\s+/g, ' ').trim());
+    desde = n.fin;
+  }
+  const cola = texto.slice(desde).replace(/[$:|/=\-–—.,\s]+/g, '');
+  const precios = numeros.map((n) => n.valor!);
+  if (cola) return null;
+  if (precios.length === 1 && ETIQUETA_GENERICA.test(normalizado(etiquetas[0]!))) {
+    return { etiquetas: [], precios };
+  }
+  const deTamano = (e: string) => {
+    const tokens = e.split(' ').filter(Boolean);
+    return tokens.length >= 1 && tokens.length <= 2 && tokens.every((t) => esTokenDeTamano(t)
+      || esTokenDeTamano(t.replace(/s$/i, '')));
+  };
+  if (!etiquetas.every(deTamano)) return null;
+  return { etiquetas: etiquetas.map(nombreDeTamano), precios };
+}
+
+/**
+ * Reparte el precio de la sección entre sus platos SIN precio.
+ *
+ * LA CARTA DE TRAGOS. «SHOTS» con dos columnas de nombres sin precio y al pie
+ * «BAJOS $8.000 / ALTOS $10.000»: antes los tragos salían todos sin precio y
+ * el pie como un producto llamado «BAJOS / ALTOS». Con un precio, cada plato
+ * toma ese; con dos o más, cada uno viene en esos tamaños —y `sugerirVariantes`
+ * los propone agrupados («Bajo», «Alto»)—.
+ *
+ * CUÁNDO A QUIÉN. Si los tamaños se repiten dentro de la sección («Sencilla
+ * 12.000 / Doble 15.000» debajo de cada hamburguesa), cada grupo es de los
+ * platos que tiene justo encima. Si no se repiten, es UN precio para toda la
+ * sección, aunque la carta lo parta en dos columnas.
+ *
+ * Y CUÁNDO NO. Sin platos sin precio en la sección, el renglón se queda como
+ * estaba (la fila de siempre, con su aviso). Un solo tamaño suelto («Bajo
+ * 8.000») solo se reparte si hay al menos dos platos que lo esperan: con uno,
+ * lo más probable es que sea un plato que se llama así.
+ */
+function repartirPreciosDeSeccion(salida: CartaSinRol, bloques: BloqueDeSeccion[]): void {
+  if (bloques.length === 0) return;
+  const lineasDeBloque = new Set(bloques.map((b) => b.linea));
+  const esObjetivo = (l: FilaSinRol) => l.precio == null && !(l.precios && l.precios.length > 0)
+    && !l.rolForzado && !lineasDeBloque.has(l.linea);
+  const usados = new Set<number>();
+
+  for (const seccion of [...new Set(bloques.map((b) => b.seccion))]) {
+    const suyos = bloques.filter((b) => b.seccion === seccion);
+    // Grupos: bloques seguidos, sin una fila de plato entre ellos.
+    const filas = salida.lineas.filter((l) => l.seccion === seccion && !lineasDeBloque.has(l.linea));
+    const grupos: Array<{ bloques: BloqueDeSeccion[]; antes: FilaSinRol[] }> = [];
+    let pendientes: FilaSinRol[] = [];
+    let k = 0;
+    for (const b of suyos) {
+      const entre = filas.filter((f) => f.linea < b.linea && !pendientes.includes(f)
+        && !grupos.some((g) => g.antes.includes(f)));
+      if (entre.length > 0 || grupos.length === 0) {
+        pendientes = entre;
+        grupos.push({ bloques: [b], antes: entre });
+      } else {
+        grupos[grupos.length - 1]!.bloques.push(b);
+      }
+      k++;
+    }
+    void k;
+    const etiquetasDe = (g: { bloques: BloqueDeSeccion[] }) => g.bloques.flatMap((b) => b.etiquetas);
+    const todas = grupos.flatMap(etiquetasDe).map((e) => e.toLowerCase());
+    const repetidas = new Set(todas).size !== todas.length;
+
+    const aplicar = (bs: BloqueDeSeccion[], objetivos: FilaSinRol[]) => {
+      const precios = bs.flatMap((b) => b.precios);
+      const etiquetas = bs.flatMap((b) => b.etiquetas);
+      const genericos = bs.filter((b) => b.etiquetas.length === 0);
+      if (genericos.length > 0 && bs.length > 1) return;
+      const metas = objetivos.filter(esObjetivo);
+      if (metas.length === 0) return;
+      if (precios.length === 1 && genericos.length === 0 && metas.length < 2) return;
+      for (const l of metas) {
+        if (precios.length === 1) {
+          l.precio = precios[0]!;
+          l.aviso = 'Tomamos el precio que la carta pone para toda la sección. Revisa que sea el suyo.';
+        } else {
+          l.precios = [...precios];
+          if (etiquetas.length === precios.length) l.tamanos = [...etiquetas];
+          l.aviso = avisoDePrecios(precios, l.tamanos);
+        }
+      }
+      for (const b of bs) usados.add(b.linea);
+    };
+
+    if (repetidas) {
+      for (const g of grupos) aplicar(g.bloques, g.antes);
+    } else {
+      aplicar(suyos, filas);
+    }
+  }
+
+  if (usados.size === 0) return;
+  for (const b of bloques) {
+    if (!usados.has(b.linea)) continue;
+    salida.ignoradas.push({
+      linea: b.linea,
+      texto: b.texto,
+      motivo: 'Es el precio de toda la sección: se lo pusimos a sus platos.',
+    });
+  }
+  salida.lineas = salida.lineas.filter((l) => !usados.has(l.linea) || !lineasDeBloque.has(l.linea));
+  salida.ignoradas.sort((a, b) => a.linea - b.linea);
+}
+
+/** Lo que una carta le dice al cliente, no lo que trae el plato. */
+const RE_INDICACION = /^(no olvides|no te pierdas|recuerda|preguntanos|pregunta|pidela|pidelo|pide|agregale|agrega|anadele|anade|sumale|suma|consulta|aplica|aplican|valido|valida|sujeto|te recomendamos|recomendado|recomendada|ideal para|disponible|disponibles|importante)\b/;
+
+/**
+ * Una indicación de la carta al cliente, ya redactada para la nota de la
+ * sección, o null. «(No olvides sumar esta michelada a tu soda o cerveza
+ * preferida)» → «No olvides sumar esta michelada a tu soda o cerveza
+ * preferida».
+ */
+export function indicacionDeLaCarta(texto: string): string | null {
+  const contenido = texto.trim().replace(/^\(\s*/, '').replace(/\s*\)\s*$/, '').trim();
+  if (contenido.split(/\s+/).length < 3) return null;
+  if (!RE_INDICACION.test(normalizado(contenido))) return null;
+  const limpio = contenido.replace(/[.;]+\s*$/, '');
+  return limpio.charAt(0).toUpperCase() + limpio.slice(1);
+}
+
+/** «Mango biche - sal - limón», o un renglón que sigue esa lista: «- tajín». */
+function listaConRayas(texto: string): boolean {
+  return /\s[-–—]\s/.test(texto) || /^[-–—]\s*\S/.test(texto.trim());
 }
 
 /**
@@ -946,8 +1161,13 @@ function ingredientesDelDeArriba(
 ): boolean {
   if (ultimo.tipo !== 'plato') return false;
   const plato = lineas[ultimo.i];
-  if (!plato || !tienePrecio(plato) || plato.descripcion) return false;
-  return texto.includes(',') && !texto.includes(':') && !/[.;]\s*\S/.test(texto);
+  if (!plato || !tienePrecio(plato)) return false;
+  // La lista con rayas partida en dos renglones: el segundo sigue la lista.
+  if (plato.descripcion) {
+    return listaConRayas(plato.descripcion) && listaConRayas(texto) && !texto.includes(':');
+  }
+  const lista = texto.includes(',') || listaConRayas(texto);
+  return lista && !texto.includes(':') && !/[.;]\s*\S/.test(texto);
 }
 
 /**
@@ -1003,10 +1223,11 @@ function descripcionDelDeArriba(
 
   const palabras = normalizado(t).split(' ').filter(Boolean);
   const delPlato = normalizado(plato.nombre).split(' ').filter(Boolean);
-  if (!t.includes(',') && palabras[0] === delPlato[0] && pareceOtroPlato(t, plato.nombre, palabras, delPlato)) {
+  const lista = t.includes(',') || listaConRayas(t);
+  if (!lista && palabras[0] === delPlato[0] && pareceOtroPlato(t, plato.nombre, palabras, delPlato)) {
     return false;
   }
-  if (!t.includes(',') && palabras.length < 3) return false;
+  if (!lista && palabras.length < 3) return false;
   return true;
 }
 

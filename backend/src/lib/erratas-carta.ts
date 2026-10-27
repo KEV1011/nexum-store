@@ -67,6 +67,51 @@ const CONOCIDAS_EXTRA = [
   'pastor', 'paisa', 'costeña', 'costeño', 'criollo', 'burguer', 'burger',
   'frances', 'personas', 'frutas', 'frias', 'frios', 'calientes', 'helada',
   'castilla', 'familia', 'ensalado', 'bebida',
+  // PALABRAS DE VERDAD QUE ESTÁN A UNA LETRA DE OTRA DEL VOCABULARIO. Sin
+  // ellas se «corregían»: «Michelada de cereza» salía «de cerveza», «maracuyá
+  // salteada» salía «malteada». No son destino de corrección; solo se dejan en
+  // paz. Lo que sigue es vocabulario de cocina y bar colombiano.
+  //  · Frutas y verduras
+  'cereza', 'cerezas', 'fresas', 'mora', 'moras', 'uva', 'uvas', 'pera', 'manzana',
+  'banano', 'banana', 'platano', 'papaya', 'patilla', 'sandia', 'melon', 'kiwi',
+  'durazno', 'mandarina', 'toronja', 'pomelo', 'lima', 'feijoa',   'curuba', 'uchuva', 'granadilla', 'pitahaya', 'borojo', 'zapote', 'mamoncillo',
+  'tamarindo', 'arandano', 'arandanos', 'frambuesa', 'frambuesas',   'biche', 'aguacates', 'pepino', 'zanahoria', 'remolacha', 'brocoli', 'espinaca',
+  'apio', 'cilantro', 'perejil', 'albahaca', 'oregano', 'romero', 'tomillo', 'laurel',
+  'hierbabuena', 'yerbabuena', 'menta', 'jengibre', 'ajo', 'cebollin', 'pimenton',
+  'jalapeno', 'jalapenos', 'aji', 'champinon', 'hongos', 'maiz', 'mazorca', 'arveja',
+  'arvejas', 'habichuela', 'lenteja', 'lentejas', 'garbanzo', 'garbanzos', 'yuca',
+  'papa', 'arracacha', 'ahuyama', 'calabacin', 'berenjena', 'repollo', 'rugula',
+  //  · Cómo se prepara
+  'salteada', 'salteado', 'salteadas', 'salteados', 'macerada', 'macerado',
+  'maceradas', 'macerados', 'marinada', 'marinado', 'horneada', 'horneado',
+  'ahumada', 'ahumado', 'glaseada', 'glaseado', 'caramelo', 'escarchada',
+  'escarchado', 'flambeada', 'guisada', 'guisado', 'sudada', 'sudado', 'cocida',
+  'cocido', 'hervida', 'hervido', 'tostada', 'tostado', 'tostadas', 'crocante',
+  'crocantes', 'crujiente', 'crujientes', 'picada', 'picado', 'molida', 'molido',
+  'rallada', 'rallado', 'batida', 'batido', 'licuada', 'licuado', 'frappe',
+  'granizada', 'helados', 'congelada', 'congelado', 'escarchar', 'reduccion',
+  'gratinar', 'banada', 'banado', 'rellenas', 'rellenos', 'apanadas', 'apanados',
+  'sofrito', 'hogao', 'guiso', 'adobo', 'adobada', 'adobado', 'aliñada', 'alinada',
+  //  · Bebidas y bar
+  'cervezas', 'michelada', 'micheladas', 'coctel', 'cocteles', 'shot', 'shots',
+  'tequila', 'aguardiente', 'ron', 'ginebra', 'whisky', 'vodka', 'brandy', 'vino',
+  'vinos', 'sangria', 'mojito', 'margarita', 'colada', 'soda',
+  'sodas', 'tonica', 'agua', 'aguas', 'hielo', 'escarcha', 'tajin', 'chamoy',
+  'sal', 'azucar', 'zumo', 'sirope', 'jarabe', 'miel', 'canela', 'clavos', 'anis',
+  'cafe', 'tinto', 'perico', 'latte', 'moca', 'mocaccino', 'expreso', 'espresso',
+  'americano', 'aromatica', 'aromaticas', 'te', 'infusion', 'kumis', 'yogur',
+  'yogurt', 'avena', 'chicha', 'masato', 'refajo', 'pony', 'malta', 'cola',
+  //  · Carnes, quesos y demás
+  'res', 'ternera', 'cordero', 'conejo', 'pavo', 'atun', 'tilapia', 'bagre',
+  'robalo', 'pargo', 'calamar', 'calamares', 'pulpo', 'mejillones', 'almejas',
+  'langosta', 'cangrejo', 'jaiba', 'tocino', 'salchicha', 'salchichas', 'butifarra',
+  'longaniza', 'chicharrones', 'costillas', 'anca', 'cadera',
+  'lomito', 'filete', 'medallones', 'milanesa', 'gordon', 'bleu', 'parmesano',
+  'costeno', 'campesino', 'cuajada', 'quesillo', 'requeson', 'crema', 'nata',
+  'mantequilla', 'arequipe', 'bocadillo', 'guayaba', 'nueces',
+  'almendras', 'mani', 'pasas', 'chips', 'galleta', 'galletas', 'oreo', 'nutella',
+  'pan', 'panes', 'tortilla', 'tortillas', 'arepas', 'masa', 'hojaldre', 'pasta',
+  'pastas', 'fideos', 'sopa', 'consome', 'caldo', 'pollos', 'carnes',
 ];
 
 function sinTildes(t: string): string {
@@ -158,10 +203,24 @@ export interface Errata {
   a: string;
 }
 
+export interface OpcionesErratas {
+  /**
+   * Solo se corrigen estas palabras (sin tildes, en minúscula): las que el OCR
+   * leyó con DUDA. Una palabra leída con seguridad está escrita así en la
+   * carta, y «corregirla» es cambiarle el plato. Ausente = no se sabe la
+   * confianza, y se corrige con el vocabulario como siempre.
+   */
+  soloEstas?: Set<string>;
+}
+
 /** El texto con las erratas corregidas, y cuáles fueron. */
-export function corregirErratas(texto: string): { texto: string; erratas: Errata[] } {
+export function corregirErratas(
+  texto: string,
+  opciones?: OpcionesErratas,
+): { texto: string; erratas: Errata[] } {
   const erratas: Errata[] = [];
   const corregido = texto.replace(/\p{L}+/gu, (palabra) => {
+    if (opciones?.soloEstas && !opciones.soloEstas.has(sinTildes(palabra))) return palabra;
     const a = correccionDePalabra(palabra);
     if (!a) return palabra;
     const escrita = conMayusculasDe(palabra, a);

@@ -241,7 +241,10 @@ function reglasDeTexto(t: TrabajoRevision, p: ProductoRevisable): void {
   if (erratas.length > 0) {
     nombre = en.texto;
     descripcion = ed.texto;
-    anotar(t, p.id, 'texto', textoDeErratas(erratas), 'reglas', true);
+    // Nace SIN MARCAR. Aquí no hay foto ni confianza del OCR: lo escribió el
+    // dueño, y una palabra a una letra de otra del vocabulario puede ser justo
+    // la que quiso («cereza», no «cerveza»). Que la acepte él.
+    anotar(t, p.id, 'texto', textoDeErratas(erratas), 'reglas', false);
   }
 
   t.estado.set(p.id, { ...e, name: nombre, description: descripcion });

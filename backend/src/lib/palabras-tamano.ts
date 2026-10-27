@@ -28,6 +28,9 @@ export const PALABRAS_DE_TAMANO = [
   // Como se abrevian en el ENCABEZADO de una tabla de precios («Pers. Med.
   // Gde. Fam.»): ahí no hay sitio para la palabra entera.
   'pers', 'fam', 'gde',
+  // El trago en vaso bajo o alto, y cómo se sirve una bebida: «SHOTS · BAJOS
+  // $8.000 / ALTOS $10.000», «Vino copa / botella».
+  'bajo', 'bajos', 'alto', 'altos', 'copa', 'botella', 'vaso', 'jarra',
 ];
 
 /** Unidades de medida que en una carta hacen de tamaño («350 ml», «12 oz»). */
