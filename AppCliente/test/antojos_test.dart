@@ -57,6 +57,37 @@ void main() {
       expect(clave(plato('Pollo broaster')), 'pollo');
     });
 
+    test('el pollo es EL plato o va dentro de otro', () {
+      // El plato es el pollo…
+      expect(clave(plato('Pollo asado entero')), 'pollo');
+      expect(clave(plato('1/2 pollo broaster')), 'pollo');
+      expect(clave(plato('Alitas BBQ x6')), 'pollo');
+      expect(clave(plato('Pechuga a la plancha')), 'pollo');
+      // …o es un ingrediente de otra cosa.
+      expect(clave(plato('Empanada de pollo')), 'empanadas');
+      expect(clave(plato('Ajiaco con pollo')), 'almuerzos');
+      expect(clave(plato('Arroz con pollo')), 'almuerzos');
+      expect(clave(plato('Sopa de pollo')), 'almuerzos');
+      // La parrilla sigue siendo parrilla.
+      expect(clave(plato('Costillas BBQ')), 'asados');
+      expect(clave(plato('Picada con pollo')), 'asados');
+    });
+
+    test('un combo se clasifica por lo que trae', () {
+      expect(
+        clave(plato('Combo 1', seccion: 'Combos',
+            descripcion: 'Hamburguesa sencilla + papas + gaseosa')),
+        'hamburguesas',
+      );
+      // Un plato cualquiera NO se clasifica por su descripción: el «pan» de
+      // los ingredientes no convierte una hamburguesa de la casa en panadería.
+      expect(
+        clave(plato('La Bestia', seccion: 'Especiales',
+            descripcion: 'Carne, queso, pan brioche')),
+        isNull,
+      );
+    });
+
     test('sin tildes, sin mayúsculas y con plural', () {
       expect(clave(plato('SALCHIPAPÁS ESPECIALES')), 'salchipapas');
       expect(clave(plato('Tacos al pastor')), 'mexicana');
@@ -153,6 +184,41 @@ void main() {
 
     test('lo que se ofrece al pagar no sale como resultado', () {
       expect(buscarEnComercio(betos, 'coca').platos, isEmpty);
+    });
+
+    test('perdona una errata en lo que se escribe', () {
+      expect(buscarEnComercio(betos, 'amburguesa').platos.map((p) => p.name),
+          ['La Bestia']);
+      expect(buscarEnComercio(betos, 'rellana').platos.map((p) => p.name),
+          ['Arepa rellena']);
+    });
+
+    test('pero no confunde palabras cortas que son otras', () {
+      final panaderia = local('Pan', [plato('Bollo limpio')]);
+      expect(buscarEnComercio(panaderia, 'pollo').platos, isEmpty);
+    });
+
+    test('«pan» ya no encuentra empanadas', () {
+      final l = local('Mixto', [plato('Empanada de carne'), plato('Pan de bono')]);
+      expect(buscarEnComercio(l, 'pan').platos.map((p) => p.name),
+          ['Pan de bono']);
+    });
+
+    test('mientras se escribe, el principio de la palabra ya cuenta', () {
+      expect(buscarEnComercio(betos, 'desmech').platos.map((p) => p.name),
+          ['Arepa rellena']);
+    });
+
+    test('el pollo que ES el plato sale antes que el que va dentro', () {
+      final asadero = local('Asadero', [
+        plato('Empanada de pollo'),
+        plato('Arroz con pollo'),
+        plato('Pollo asado entero'),
+      ]);
+      expect(
+        buscarEnComercio(asadero, 'pollo').platos.map((p) => p.name),
+        ['Pollo asado entero', 'Empanada de pollo', 'Arroz con pollo'],
+      );
     });
   });
 

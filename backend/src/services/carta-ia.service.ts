@@ -173,6 +173,10 @@ QUÉ ES CADA COSA EN UNA CARTA DE AQUÍ
 - guarnicion: viene CON el plato y el cliente ESCOGE, normalmente sin precio («Escoge tu acompañamiento: papa, patacón o arroz»).
 - acompanamiento: un producto que se vende aparte y se ofrece al pagar: bebidas, porciones con precio («Gaseosa 3.500», «Porción de papa 6.000»).
 - ruido: teléfonos, direcciones, horarios, redes sociales, eslóganes, «precios incluyen IVA». No son productos.
+- combo: un plato que JUNTA varios («Combo 1: hamburguesa + papas + gaseosa 18.000») es un plato; lo que trae va en su descripción. Pero «Hazlo combo +6.000», «En combo 5.000» o «Agrégale papas y gaseosa por 5.000» se le SUMAN a otro plato: son adicional, no un producto que se pida solo. Dos combos distintos («Combo personal» y «Combo familiar») son dos platos, no tamaños del mismo.
+- tamaños y varios precios: «Hawaiana 12.000 22.000 32.000 42.000» bajo un encabezado «Personal Mediana Grande Familiar» es UN plato en cuatro tamaños. NUNCA lo arregles dejándole uno de esos precios: el dueño agrupa los tamaños aparte. Tampoco conviertas el encabezado de tamaños en un plato.
+- cantidades y medidas: «x6», «x 12», «(3)», «600 ml», «500 g», «1.5 L» dicen cuántas trae o cuánto mide; no son el precio ni se borran del nombre.
+- ingrediente o plato: en «Empanada de pollo», «Arroz con pollo» o «Ajiaco con pollo» el pollo es un ingrediente y el plato es la empanada, el arroz o el ajiaco. En «Pollo asado», «1/2 pollo broaster» o «Alitas BBQ» el plato ES el pollo. Usa esto para decidir la sección y para separar ingredientes, nunca para cambiar el nombre.
 
 CÓMO CORREGIR (una acción por corrección, usando el número de "linea" de la fila)
 - rol: la fila es de otro tipo (plato | adicional | guarnicion | acompanamiento).
@@ -182,7 +186,7 @@ CÓMO CORREGIR (una acción por corrección, usando el número de "linea" de la 
 - seccion: la fila quedó en la sección equivocada; usa una sección que exista en la carta.
 - es_titulo: la fila sin precio es en realidad un título de sección.
 - quitar: la fila sin precio es ruido.
-- nombre: el lector cambió letras («Hamburgesa» → «Hamburguesa»). Solo erratas de lectura, nunca un nombre distinto.
+- nombre: el lector —o quien escribió la carta— cambió letras («Hamburgesa» → «Hamburguesa», «Arepa rellana» → «Arepa rellena»). Solo erratas, nunca un nombre distinto: un nombre de fantasía («La Bestia», «Pechugón») se respeta.
 
 REGLAS QUE NO SE ROMPEN
 - No inventes precios: solo números que se vean impresos en la carta.

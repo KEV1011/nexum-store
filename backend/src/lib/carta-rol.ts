@@ -113,6 +113,14 @@ export function seccionDeGuarnicion(seccion: string): boolean {
 /** Cómo empieza un adicional escrito dentro de cualquier sección. */
 const INICIO_ADICIONAL = /^(\+|(adicion(al)?( de)?|extra( de)?|agregar|agregado( de)?)( |$))/;
 
+/**
+ * Lo que convierte un plato en COMBO o le suma algo: «Hazlo combo +6.000»,
+ * «En combo 5.000», «Agrégale papas y gaseosa por 5.000». Es lo que la app
+ * ofrece como «Con combo · Opcional» dentro del plato, no un producto que se
+ * pida solo: sin esto salía en el catálogo un plato llamado «Hazlo combo».
+ */
+const INICIO_MEJORA = /^((hazl[oa]|hacerl[oa]|vuelvel[oa]|pasal[oa]( a)?|conviertel[oa]( en)?|agrandal[oa]|agrandar)( en| el| tu)? combo|(en|con) combo|agregale|anadele|adicionale|agregue|agrega( le)?)( |$)/;
+
 /** Qué dice el TÍTULO de la sección. `null` = no dice nada. */
 export function rolDeSeccion(seccion: string): RolCarta | null {
   const n = normalizado(seccion);
@@ -148,6 +156,12 @@ export function rolDeLinea(
   const nombre = normalizado(linea.nombre);
   if (INICIO_ADICIONAL.test(nombre)) {
     return { rol: 'adicional', motivo: 'Empieza como un adicional («+», «Adición de…»).' };
+  }
+  if (INICIO_MEJORA.test(nombre)) {
+    return {
+      rol: 'adicional',
+      motivo: 'Se le suma a un plato («Hazlo combo», «Agrégale…»): va dentro del plato, no se pide solo.',
+    };
   }
   const porSeccion = rolDeSeccion(linea.seccion);
   if (porSeccion === 'adicional') {
@@ -198,6 +212,9 @@ export function nombreDeAdicional(nombre: string): string {
   const limpio = nombre
     .replace(/^\s*\+\s*/, '')
     .replace(/^\s*(adici[oó]n(al)?|extra|agregad[oa]|agregar)(\s+de)?\s+/i, '')
+    // «Hazlo combo» → «Combo»; «Agrégale papas y gaseosa» → «Papas y gaseosa».
+    .replace(/^\s*(h[aá]zl[oa]|hacerl[oa]|vu[eé]lvel[oa]|p[aá]sal[oa]( a)?|convi[eé]rtel[oa]( en)?|agr[aá]ndal[oa]|agrandar)(\s+(en|el|tu))?\s+(?=combo)/i, '')
+    .replace(/^\s*(agr[eé]gale|a[nñ][aá]dele|adici[oó]nale|agregue|agrega(\s*le)?)\s+/i, '')
     .trim();
   const final = limpio || nombre.trim();
   return final.charAt(0).toUpperCase() + final.slice(1);

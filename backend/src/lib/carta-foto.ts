@@ -21,6 +21,8 @@
 /** Lo mínimo que puede costar algo en una carta. Por debajo es otra cosa. */
 import { pareceDescripcion, separarDescripcion } from './nombre-y-descripcion';
 import { rolDeLinea, seccionDeGuarnicion, type RolCarta } from './carta-rol';
+import { esTokenDeTamano, juntarMedidas } from './palabras-tamano';
+import { avisoDeErratas, corregirErratas } from './erratas-carta';
 
 export const PRECIO_MIN = 500;
 
@@ -62,6 +64,13 @@ export interface LineaCarta {
    */
   precios?: number[];
   /**
+   * Cómo se llama cada uno de esos precios, en el MISMO orden, cuando la carta
+   * lo dice: el encabezado de la tabla («Personal  Mediana  Grande
+   * Familiar») o el propio nombre («Jugo en agua / en leche»). Ausente = no lo
+   * dice, y el dueño los nombra en la vista previa.
+   */
+  tamanos?: string[];
+  /**
    * Plato, adicional o acompañamiento: la PROPUESTA de `carta-rol`. El dueño
    * la cambia en la vista previa; aquí solo se dice qué parece y por qué.
    */
@@ -82,6 +91,20 @@ export interface CartaLeida {
    * Ahora se propone como descripción de los platos de su sección.
    */
   notas: NotaCarta[];
+  /**
+   * Los renglones que NO son de la carta: teléfono, dirección, horario, redes.
+   * Antes salían como platos sin precio —o peor, como SECCIONES, y todo lo que
+   * venía debajo quedaba bajo un título «Domicilios 300 123 4567»—. Se
+   * devuelven para que el dueño vea que se leyeron y por qué se dejaron fuera.
+   */
+  ignoradas: RenglonIgnorado[];
+}
+
+export interface RenglonIgnorado {
+  linea: number;
+  texto: string;
+  /** «teléfono», «dirección»…, dicho al dueño. */
+  motivo: string;
 }
 
 export interface NotaCarta {
@@ -93,49 +116,148 @@ export interface NotaCarta {
 }
 
 /**
+ * Un número tal como aparece en la línea, ya clasificado.
+ *
+ * Se trocea la línea UNA vez y de aquí salen los precios y el nombre: si los
+ * dos se decidieran por separado, el nombre podría perder un número que el
+ * precio no usó, o al revés.
+ */
+interface NumeroDeLinea {
+  inicio: number;
+  fin: number;
+  /** El valor ya en pesos («8 mil» → 8000). Null = no es un entero. */
+  valor: number | null;
+  esPrecio: boolean;
+  /** Es un número de teléfono: no es un precio y delata una línea de ruido. */
+  telefono: boolean;
+}
+
+/**
+ * Las formas en que se escribe un número en una carta, de la más específica a
+ * la más general. El ORDEN es lo que hace funcionar esto:
+ *
+ *   1. Teléfono: celular («300 123 4567») o fijo nuevo («601 …»). Antes se
+ *      leía como un solo número enorme y el rango lo tiraba, pero con los
+ *      espacios bien leídos «300 123» pasaría por precio.
+ *   2. «8 mil», «12k».
+ *   3. Miles con punto o coma: «12.000», «12,000», «1.250.000».
+ *   4. Miles con espacio: «12 000». SOLO grupos de tres exactos, y sin un
+ *      dígito, punto o coma pegado detrás.
+ *   5. Lo demás: un entero o un decimal suelto («28000», «1.5»).
+ *
+ * EL DEFECTO QUE CORRIGE, y era de plata. La versión anterior aceptaba
+ * espacios DENTRO de cualquier número, así que pegaba lo que la carta pone
+ * uno al lado del otro: «Alitas BBQ x6 16.000» salía a $616.000, «Empanadas
+ * x3 6.000» a $36.000 —sin aviso, porque eran UN precio—, y «Hawaiana 12.000
+ * 22.000 32.000 42.000» se fundía en un número de veinte cifras que el rango
+ * descartaba: la pizza se quedaba sin ninguno de sus cuatro precios.
+ */
+const RE_NUMERO = new RegExp(
+  [
+    String.raw`(?<tel>(?:\+?57[\s.-]?)?(?:3\d{2}|60\d)[\s.-]?\d{3}[\s.-]?\d{4}(?!\d))`,
+    String.raw`(?<mil>\d{1,3}\s*(?:mil|k)(?![\p{L}]))`,
+    String.raw`(?<sep>\d{1,3}(?:[.,]\d{3})+(?![\d]))`,
+    String.raw`(?<esp>\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?![\d.,]))`,
+    String.raw`(?<suelto>\d+(?:[.,]\d+)?)`,
+  ].join('|'),
+  'giu',
+);
+
+/**
+ * Lo que va DETRÁS de un número y lo convierte en una medida o una cantidad:
+ * «600ml», «500 g», «12 porciones», «20 %». Un «500 g» de chorizo no son
+ * quinientos pesos: con el mínimo de precio en 500, se vendía a eso.
+ */
+const RE_UNIDAD_DETRAS = new RegExp(
+  String.raw`^\s*(?:%|(?:ml|cc|cm|mm|gr|grs|gramos?|g|kg|kgs|kilos?|lb|lbs|libras?|oz|onz|onzas?|`
+    + String.raw`l|lt|lts|litros?|und|unds|unid|unidades|uds?|porci[oó]n(?:es)?|presas?|`
+    + String.raw`personas?|pers|piezas?|pzs?)(?![\p{L}]))`,
+  'iu',
+);
+
+/** «11:30», «8 am», «9pm»: es una hora. */
+const RE_HORA_DETRAS = /^(?::\d|\s*(?:a\.?\s?m\b|p\.?\s?m\b|h\b|hrs?\b))/i;
+
+function numerosDeLinea(linea: string): NumeroDeLinea[] {
+  const salida: NumeroDeLinea[] = [];
+  for (const m of linea.matchAll(RE_NUMERO)) {
+    const inicio = m.index ?? 0;
+    const fin = inicio + m[0].length;
+    const g = m.groups ?? {};
+    let valor: number | null = null;
+    if (g['tel']) {
+      salida.push({ inicio, fin, valor: null, esPrecio: false, telefono: true });
+      continue;
+    }
+    if (g['mil']) valor = Number(m[0].replace(/[^\d]/g, '')) * 1000;
+    else if (g['sep'] || g['esp']) valor = Number(m[0].replace(/[^\d]/g, ''));
+    else if (/^\d+$/.test(m[0])) valor = Number(m[0]);
+    // Un decimal suelto («1.5 L», «12,5») no es un precio en pesos.
+
+    const detras = linea.slice(fin);
+    const delante = linea.slice(0, inicio);
+    const esMedida = RE_UNIDAD_DETRAS.test(detras);
+    const esHora = RE_HORA_DETRAS.test(detras) || /\d:\s*$/.test(delante);
+    const enRango = valor != null && Number.isFinite(valor)
+      && valor >= PRECIO_MIN && valor <= PRECIO_MAX;
+    salida.push({
+      inicio, fin, valor,
+      esPrecio: enRango && !esMedida && !esHora,
+      telefono: false,
+    });
+  }
+  return salida;
+}
+
+/**
  * Los números de una línea que PUEDEN ser un precio.
  *
  * El punto en Colombia es separador de MILES: «3.500» son tres mil quinientos,
- * no tres con cinco. Por eso se quitan todos los separadores y se lee el
- * entero. El filtro por rango es lo que impide que «Empanadas (3)» aporte un
- * «3» y la línea parezca tener dos precios.
+ * no tres con cinco. El filtro por rango es lo que impide que «Empanadas (3)»
+ * aporte un «3» y la línea parezca tener dos precios.
  */
 export function preciosDeLinea(linea: string): number[] {
-  const encontrados: number[] = [];
-  // Grupos de dígitos que pueden llevar puntos, comas o espacios finos dentro.
-  for (const m of linea.matchAll(/\d[\d.,  ]*\d|\d/g)) {
-    const crudo = m[0];
-    // Un token con más de un separador seguido no es un número, es basura de
-    // OCR («12..000»); se limpia igual y el rango decide.
-    const soloDigitos = crudo.replace(/[^\d]/g, '');
-    if (!soloDigitos) continue;
-    const n = Number(soloDigitos);
-    if (Number.isFinite(n) && n >= PRECIO_MIN && n <= PRECIO_MAX) encontrados.push(n);
-  }
-  return encontrados;
+  return numerosDeLinea(linea).filter((n) => n.esPrecio).map((n) => n.valor!);
+}
+
+/** La línea trae un número de teléfono. */
+export function traeTelefono(linea: string): boolean {
+  return numerosDeLinea(linea).some((n) => n.telefono);
 }
 
 /**
  * Quita el precio, los puntos guía y la decoración para quedarse con el nombre.
  *
- * Se borran SOLO los números que caen en el rango de un precio, no todos: el
- * «(3)» de «Empanadas (3)» le dice al cliente cuántas le dan, los «250 g» de
- * una porción son el tamaño, y un «2x1» es la oferta. Borrarlos cambiaba el
- * producto — y nadie lo habría notado hasta que alguien pidiera una empanada.
+ * Se borran SOLO los números que son precio, no todos: el «(3)» de «Empanadas
+ * (3)» le dice al cliente cuántas le dan, los «250 g» de una porción son el
+ * tamaño, el «x6» de las alitas cuántas trae y un «2x1» es la oferta.
+ * Borrarlos cambiaba el producto — y nadie lo habría notado hasta que alguien
+ * pidiera una empanada.
  */
 function nombreDeLinea(linea: string): string {
-  const sinPrecio = linea.replace(/\$?\s*\d[\d.,  ]*\d|\$?\s*\d/g, (t) => {
-    const n = Number(t.replace(/[^\d]/g, ''));
-    return Number.isFinite(n) && n >= PRECIO_MIN && n <= PRECIO_MAX ? ' ' : t;
-  });
+  let sinPrecio = '';
+  let desde = 0;
+  for (const n of numerosDeLinea(linea)) {
+    if (!n.esPrecio) continue;
+    // El signo de pesos que lo precede se va con él.
+    const antes = linea.slice(desde, n.inicio).replace(/\$\s*$/, '');
+    sinPrecio += `${antes} `;
+    desde = n.fin;
+  }
+  sinPrecio += linea.slice(desde);
   return sinPrecio
     // Puntos guía («Pechuga a la plancha ....... 19.000») y rayas de relleno.
     .replace(/[.·•\-–—_]{2,}/g, ' ')
     // Paréntesis que quedaron vacíos al llevarse el precio de dentro.
     .replace(/\(\s*\)|\[\s*\]/g, ' ')
     .replace(/\s{2,}/g, ' ')
-    // La barra y los dos puntos sobran cuando separaban precios entre sí.
-    .replace(/^[\s.·•\-–—_:|/]+|[\s.·•\-–—_:|/]+$/g, '')
+    // La barra y los dos puntos sobran cuando separaban precios entre sí, y el
+    // «+» o el «por» que los anunciaban («Hazlo combo +6.000», «papas y
+    // gaseosa por 5.000») se quedan colgando.
+    .replace(/(?:\s+(?:por|a solo|solo|desde|valor))+\s*[:.]?\s*$/i, '')
+    // El «+» del PRINCIPIO no se toca: «+ Tocineta» es como la carta dice
+    // que eso es un adicional, y `carta-rol` lo lee de ahí.
+    .replace(/^[\s.·•\-–—_:|/]+|[\s.·•\-–—_:|/+]+$/g, '')
     .trim();
 }
 
@@ -280,7 +402,7 @@ interface RenglonCrudo {
  */
 function soloPrecio(texto: string): boolean {
   const t = texto.trim();
-  if (!/^\$?\s*\d[\d.,\s]*\d$|^\$?\s*\d$/.test(t)) return false;
+  if (!/^\$?\s*\d[\d.,\s]*\d$|^\$?\s*\d$|^\$?\s*\d{1,3}\s*(?:mil|k)$/i.test(t)) return false;
   return preciosDeLinea(t).length === 1;
 }
 
@@ -470,7 +592,134 @@ export function parsearCartaMedida(
 }
 
 function parsearRenglones(filas: Array<{ texto: string; grande?: boolean }>): CartaLeida {
-  return conRol(parsearSinRol(filas));
+  return sinErratas(conRol(parsearSinRol(filas)));
+}
+
+/**
+ * Corrige las erratas de los nombres y de los títulos (`erratas-carta`), y lo
+ * DICE en el aviso de la fila: el dueño tiene que poder ver qué se cambió.
+ *
+ * Va después del rol a propósito: el rol se decide con lo que la carta trae
+ * impreso, y una corrección nunca debe cambiar qué ES una fila.
+ */
+function sinErratas(carta: CartaLeida): CartaLeida {
+  const secciones = new Map<string, string>();
+  for (const sec of carta.secciones) secciones.set(sec, corregirErratas(sec).texto);
+  return {
+    ...carta,
+    secciones: [...new Set(secciones.values())],
+    notas: carta.notas.map((n) => ({ ...n, seccion: secciones.get(n.seccion) ?? n.seccion })),
+    lineas: carta.lineas.map((l) => {
+      const { texto, erratas } = corregirErratas(l.nombre);
+      const seccion = secciones.get(l.seccion) ?? l.seccion;
+      if (erratas.length === 0) return { ...l, seccion };
+      const aviso = [l.aviso, avisoDeErratas(erratas)].filter(Boolean).join(' ');
+      return { ...l, nombre: texto, seccion, aviso };
+    }),
+  };
+}
+
+
+// ── Lo que NO es de la carta ──────────────────────────────────────────────────
+
+const RE_WEB = /(?:^|\s)@[\w.]{2,}|www\.|https?:\/\/|\.com\b|\.co\b/i;
+const RE_CONTACTO = /\b(?:instagram|facebook|tiktok|whatsapp|wpp|telefono|tel|cel|celular|llamanos|escribenos|siguenos)\b/;
+const RE_DOMICILIO = /\bdomicilios?\b/;
+const DIAS = 'lunes|martes|miercoles|jueves|viernes|sabado|domingo';
+const RE_HORARIO = new RegExp(
+  `\\b(?:horario|abierto|abrimos|atendemos|atencion)\\b|\\b(?:${DIAS})s?\\s+(?:a|y|al)\\s+(?:${DIAS})s?\\b`,
+);
+const RE_HORA = /\b\d{1,2}(?::\d{2})?\s*[ap]\.?\s?m\b/i;
+const RE_DIRECCION = /^(?:calle|cl|cll|carrera|cra|kra|kr|cr|avenida|av|diagonal|dg|transversal|tv|barrio|direccion|local)\s+\d/;
+const RE_PLACA = /#\s*\d+\s*[a-z]?\s*-\s*\d+/i;
+const RE_LEGAL = /\b(?:iva|propina|servicio voluntario|imagenes de referencia|sujeto a cambios?|precios en pesos)\b/;
+
+/**
+ * Por qué este renglón NO es un plato ni un título, o null si puede serlo.
+ *
+ * Lo que delata al teléfono y a las redes vale siempre: un número de celular
+ * no se vende. Lo demás (horario, dirección, domicilio, IVA) solo cuando la
+ * línea NO trae precio, porque «Almuerzo ejecutivo de lunes a viernes 15.000»
+ * es un plato y perderlo es el error caro.
+ */
+export function motivoDeRuido(cruda: string, precios: number[]): string | null {
+  const n = normalizado(cruda);
+  if (traeTelefono(cruda)) return 'Es un teléfono.';
+  if (RE_WEB.test(cruda) || RE_CONTACTO.test(n)) return 'Son redes o datos de contacto.';
+  if (precios.length > 0) return null;
+  if (RE_DIRECCION.test(n) || RE_PLACA.test(cruda)) return 'Es una dirección.';
+  if (RE_HORARIO.test(n) || RE_HORA.test(cruda)) return 'Es el horario.';
+  if (RE_DOMICILIO.test(n)) return 'Habla del domicilio, no de un plato.';
+  if (RE_LEGAL.test(n)) return 'Es una nota de la carta (IVA, propina…).';
+  return null;
+}
+
+// ── Cómo se llama cada precio ────────────────────────────────────────────────
+
+/**
+ * El ENCABEZADO de una tabla de precios: «Personal  Mediana  Grande  Familiar»,
+ * o el título con los tamaños detrás («PIZZAS  Pers.  Med.  Gde.  Fam.»).
+ *
+ * Es la forma más común de imprimir una pizzería, y sin leerla cada pizza
+ * llegaba con cuatro precios sin nombre —y el encabezado, como un plato sin
+ * precio—. Se exigen DOS tamaños o más al final del renglón: «Salchipapa
+ * mediana» sin precio es un plato al que el OCR le perdió el número.
+ */
+export function encabezadoDeTamanos(nombre: string): { titulo: string; tamanos: string[] } | null {
+  const tokens = juntarMedidas(nombre).split(/[\s|/]+/).filter(Boolean);
+  let corte = tokens.length;
+  while (corte > 0 && esTokenDeTamano(tokens[corte - 1]!)) corte--;
+  const tamanos = tokens.slice(corte);
+  if (tamanos.length < 2) return null;
+  const titulo = tokens.slice(0, corte).join(' ').replace(/[:\s]+$/, '');
+  if (titulo && !(vaEnMayusculas(titulo) || suenaASeccion(titulo) || titulo.endsWith(':'))) {
+    return null;
+  }
+  return {
+    titulo,
+    tamanos: tamanos.map((t) => tituloDeSeccion(t.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}/]+$/gu, ''))),
+  };
+}
+
+/**
+ * «Jugo en agua / en leche 5.000 / 7.000»: el nombre ya dice cómo se llama
+ * cada precio. Devuelve el plato y las opciones, o null si las partes no
+ * cuadran con los precios.
+ *
+ * La segunda parte dice cuántas palabras lleva una opción («en leche» son
+ * dos), y esas mismas se toman del final de la primera («Jugo en agua» →
+ * «Jugo» + «en agua»). Si así no queda plato, se toma una sola palabra
+ * («Limonada natural / de coco» → «Limonada» + «natural»).
+ */
+export function opcionesDelNombre(nombre: string, cuantas: number): { base: string; opciones: string[] } | null {
+  const partes = nombre.split(/\s*\/\s*/).map((p) => p.trim()).filter(Boolean);
+  if (partes.length !== cuantas || cuantas < 2) return null;
+  const primera = partes[0]!.split(/\s+/);
+  const largo = partes[1]!.split(/\s+/).length;
+  for (const k of [largo, 1]) {
+    if (primera.length <= k) continue;
+    const base = primera.slice(0, primera.length - k).join(' ');
+    const opciones = [primera.slice(primera.length - k).join(' '), ...partes.slice(1)];
+    if (base.length >= 2 && opciones.every((o) => o.length >= 1)) return { base, opciones };
+  }
+  return null;
+}
+
+/** «Personal $12.000, Mediana $22.000» o «$12.000 y $22.000». */
+function avisoDePrecios(precios: number[], tamanos?: string[]): string {
+  if (tamanos) {
+    const pares = precios.map((p, i) => `${tamanos[i]} ${comoPesos(p)}`).join(', ');
+    return `Viene en ${precios.length} tamaños (${pares}). Agrúpalos o deja uno.`;
+  }
+  return `Tiene ${precios.length} precios (${precios.map(comoPesos).join(' y ')}). `
+    + 'Deja uno, o agrúpalos como tamaños del mismo plato.';
+}
+
+interface CartaSinRol {
+  lineas: FilaSinRol[];
+  secciones: string[];
+  notas: NotaCarta[];
+  ignoradas: RenglonIgnorado[];
 }
 
 type FilaSinRol = Omit<LineaCarta, 'rol' | 'motivoRol'> & {
@@ -480,11 +729,12 @@ type FilaSinRol = Omit<LineaCarta, 'rol' | 'motivoRol'> & {
 
 function parsearSinRol(
   filas: Array<{ texto: string; grande?: boolean }>,
-): { lineas: FilaSinRol[]; secciones: string[]; notas: NotaCarta[] } {
-  const salida: { lineas: FilaSinRol[]; secciones: string[]; notas: NotaCarta[] } = {
-    lineas: [], secciones: [], notas: [],
-  };
+): CartaSinRol {
+  const salida: CartaSinRol = { lineas: [], secciones: [], notas: [], ignoradas: [] };
   let seccion = '';
+  // El encabezado de la tabla de precios vigente («Personal Mediana Grande»):
+  // vale hasta el siguiente título.
+  let tamanosVigentes: string[] | null = null;
   // Lo último que se escribió, para pegarle el renglón que lo continúa. Un
   // renglón en blanco o un título lo cortan: separan bloques.
   let ultimo: { tipo: 'plato' | 'nota'; i: number } | null = null;
@@ -498,7 +748,30 @@ function parsearSinRol(
     const nombre = nombreDeLinea(cruda);
     const linea = i + 1;
 
+    // 0. LO QUE NO ES DE LA CARTA: teléfono, redes, dirección, horario. Antes
+    // salían como platos sin precio, o como SECCIONES —y todo lo de debajo
+    // quedaba bajo un título «Domicilios 300 123 4567»—.
+    const ruido = motivoDeRuido(cruda, precios);
+    if (ruido) {
+      salida.ignoradas.push({ linea, texto: cruda, motivo: ruido });
+      ultimo = null;
+      continue;
+    }
+
     if (precios.length === 0) {
+      // 0b. EL ENCABEZADO DE UNA TABLA DE PRECIOS. No es un plato: dice cómo
+      // se llaman los precios de las filas que vienen debajo.
+      const encabezado = grande !== false ? encabezadoDeTamanos(nombre) : null;
+      if (encabezado) {
+        if (encabezado.titulo) {
+          seccion = tituloDeSeccion(encabezado.titulo);
+          if (!salida.secciones.includes(seccion)) salida.secciones.push(seccion);
+        }
+        tamanosVigentes = encabezado.tamanos;
+        ultimo = null;
+        continue;
+      }
+
       // 1. EL RENGLÓN QUE CONTINÚA AL DE ARRIBA. La carta parte los
       // ingredientes —y las notas— en dos renglones, y el segundo empieza en
       // minúscula o con una coma: «frescos, porción de papa a la francesa».
@@ -513,7 +786,7 @@ function parsearSinRol(
           continue;
         }
         const plato = salida.lineas[ultimo.i]!;
-        if (plato.precio != null) {
+        if (tienePrecio(plato)) {
           plato.descripcion = unirTexto(plato.descripcion ?? '', resto.replace(/^\(|\)$/g, ''));
           continue;
         }
@@ -569,6 +842,7 @@ function parsearSinRol(
       // una sección vacía. Ahí solo cuentan las pistas fuertes.
       const debil = !seccionDeGuarnicion(seccion);
       if (pareceSeccion(nombre, grande, debil)) {
+        tamanosVigentes = null;
         seccion = tituloDeSeccion(nombre.replace(/\s*:\s*$/, ''));
         if (!salida.secciones.includes(seccion)) salida.secciones.push(seccion);
         ultimo = null;
@@ -594,13 +868,20 @@ function parsearSinRol(
     if (precios.length > 1) {
       // Elegir uno por nuestra cuenta es justo el error caro: con «5.000 /
       // 7.000» quedarse con el primero vende barato el familiar y con el
-      // último cobra de más el personal. Se deja vacío y se dice lo que hay.
+      // último cobra de más el personal. Se deja vacío y se dice lo que hay —
+      // con el nombre de cada precio cuando la carta lo da—.
+      const delNombre = opcionesDelNombre(nombre, precios.length);
+      const tamanos = tamanosVigentes?.length === precios.length
+        ? tamanosVigentes
+        : delNombre?.opciones;
+      const plato = separarDescripcion(delNombre && tamanos === delNombre.opciones ? delNombre.base : nombre);
       salida.lineas.push({
-        linea, ...separarDescripcion(nombre), precio: null, seccion, precios,
-        aviso: `Tiene ${precios.length} precios (${precios.map(comoPesos).join(' y ')}). `
-          + 'Deja uno, o agrúpalos como tamaños del mismo plato.',
+        linea, ...plato, precio: null, seccion, precios,
+        ...(tamanos ? { tamanos: [...tamanos] } : {}),
+        aviso: avisoDePrecios(precios, tamanos),
       });
-      ultimo = null;
+      // Los ingredientes del renglón de abajo también son de ESTE plato.
+      ultimo = { tipo: 'plato', i: salida.lineas.length - 1 };
       continue;
     }
 
@@ -609,6 +890,15 @@ function parsearSinRol(
   }
 
   return salida;
+}
+
+/**
+ * El plato de arriba tiene precio: uno, o varios tamaños. Una pizza con sus
+ * cuatro precios es tan plato como una con uno, y sus ingredientes del
+ * renglón de abajo son suyos.
+ */
+function tienePrecio(plato: { precio: number | null; precios?: number[] }): boolean {
+  return plato.precio != null || (plato.precios?.length ?? 0) > 1;
 }
 
 /** Largo máximo de una descripción armada con renglones de la carta. */
@@ -656,7 +946,7 @@ function ingredientesDelDeArriba(
 ): boolean {
   if (ultimo.tipo !== 'plato') return false;
   const plato = lineas[ultimo.i];
-  if (!plato || plato.precio == null || plato.descripcion) return false;
+  if (!plato || !tienePrecio(plato) || plato.descripcion) return false;
   return texto.includes(',') && !texto.includes(':') && !/[.;]\s*\S/.test(texto);
 }
 
@@ -699,7 +989,7 @@ function descripcionDelDeArriba(
 ): boolean {
   if (ultimo.tipo !== 'plato') return false;
   const plato = lineas[ultimo.i];
-  if (!plato || plato.precio == null || plato.descripcion) return false;
+  if (!plato || !tienePrecio(plato) || plato.descripcion) return false;
   const t = texto.trim();
   if (hablaDeLaSeccion(t)) return false;
 
@@ -856,10 +1146,11 @@ export function notaDeInclusion(texto: string): string | null {
 }
 
 /** Cada fila con el rol que se le propone. Va aparte para no tocar los cinco `push`. */
-function conRol(carta: { lineas: FilaSinRol[]; secciones: string[]; notas: NotaCarta[] }): CartaLeida {
+function conRol(carta: CartaSinRol): CartaLeida {
   return {
     secciones: carta.secciones,
     notas: carta.notas,
+    ignoradas: carta.ignoradas,
     lineas: carta.lineas.map(({ rolForzado, ...l }) => {
       const { rol, motivo } = rolForzado
         ?? rolDeLinea({ nombre: l.nombre, seccion: l.seccion, precio: l.precio });
