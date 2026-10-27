@@ -1,3 +1,4 @@
+import { listarComerciosMalUbicados } from '../services/ubicacion-comercio.service';
 import { Router, Request, Response, NextFunction } from 'express';
 import { esTipoAtascado } from '../lib/servicio-atascado';
 import { DocumentStatus, PayoutStatus } from '@prisma/client';
@@ -48,6 +49,7 @@ import {
   cancelarServicioAtascado,
   diagnoseMatching,
   diagnosePedido,
+  diagnoseMandado,
   type TipoDiagnostico,
   listClientsForKyc,
   listBusinessesForAdmin,
@@ -170,6 +172,19 @@ router.use((req: Request, res: Response, next: NextFunction): void => {
 // interruptor de encargos, que es lo que de verdad decide si le llega.
 router.get('/matching/diagnose', async (req: Request, res: Response): Promise<void> => {
   try {
+    const mandado = String(req.query['mandado'] ?? '').trim();
+    if (mandado) {
+      const r = await diagnoseMandado(mandado);
+      if (!r) {
+        res.status(404).json({ success: false, error: `No encontramos el mandado «${mandado}».` });
+        return;
+      }
+      res.json({
+        success: true,
+        data: { ...r, tipo: 'errand', radiusMeters: 5000, freshnessSeconds: 120 },
+      });
+      return;
+    }
     const pedido = String(req.query['pedido'] ?? '').trim();
     if (pedido) {
       const r = await diagnosePedido(pedido);
@@ -629,6 +644,18 @@ router.get('/businesses', async (req: Request, res: Response): Promise<void> => 
 // mandados de compra. Devuelve el enlace del portal, que es con el que se le
 // carga la carta desde una foto — y el mismo que se le entrega el día que
 // diga que sí.
+// GET /admin/businesses/ubicacion-dudosa — comercios cuya ubicación no sirve
+// para despachar: sin punto, sin plaza, o con el punto lejos de su ciudad.
+// Hasta que alguien fija el punto en su portal, sus compras se buscan en el
+// centro de su ciudad (o en la entrega del cliente), no en el local.
+router.get('/businesses/ubicacion-dudosa', async (_req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await listarComerciosMalUbicados() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
 router.post('/businesses/listado', async (req: Request, res: Response): Promise<void> => {
   const b = req.body as Record<string, unknown>;
   try {
@@ -1085,6 +1112,7 @@ const PANEL_HTML = `<!DOCTYPE html>
     <section id="tab-drivers" style="display:none">
       <form class="inline" onsubmit="runDiag(event)">
         <div><label>Código de pedido (opcional)</label><input id="diag-pedido" placeholder="NX-7754" /></div>
+        <div><label>o de mandado / compra</label><input id="diag-mandado" placeholder="MD-1234" /></div>
         <div><label>o Lat del punto de recogida</label><input id="diag-lat" value="7.3754" /></div>
         <div><label>Lng</label><input id="diag-lng" value="-72.6486" /></div>
         <div><label>Servicio</label><select id="diag-tipo"><option value="trip">Viaje</option><option value="order">Pedido</option><option value="errand">Mandado</option></select></div>
@@ -1143,10 +1171,22 @@ const PANEL_HTML = `<!DOCTYPE html>
             <option value="store">Tienda</option>
             <option value="other">Comercio</option>
           </select></div>
+          <div><label>Ciudad</label><select id="ficha-ciudad" required><option value="">Cargando…</option></select></div>
           <div><label>Teléfono (opcional)</label><input id="ficha-telefono" placeholder="3001112233" /></div>
           <div><button type="submit" style="width:auto">Abrir ficha</button></div>
         </form>
         <div id="ficha-resultado" style="margin-top:10px;font-size:.82rem"></div>
+      </div>
+
+      <div style="margin-top:22px;padding:16px;background:#fffaf0;border:1px solid #f5d9a8;border-radius:12px">
+        <h3 style="margin:0 0 6px;font-size:.95rem">Ubicación dudosa</h3>
+        <p style="font-size:.78rem;color:#64748b;margin:0 0 10px">
+          Comercios sin punto en el mapa, sin ciudad, o con el punto lejos de su ciudad. Mientras
+          no se corrija, sus compras se buscan en el centro de su ciudad y no en el local. Abre su
+          portal → Ajustes y fija el punto en el mapa. Nada se corrige solo.
+        </p>
+        <table><thead><tr><th>Negocio</th><th>Ciudad</th><th>Qué pasa</th><th>Acción</th></tr></thead>
+        <tbody id="ubicacion-body"><tr><td colspan="4" class="empty">Cargando…</td></tr></tbody></table>
       </div>
     </section>
 
@@ -1902,8 +1942,11 @@ function runDiag(ev) {
   const lat = document.getElementById('diag-lat').value.trim();
   const lng = document.getElementById('diag-lng').value.trim();
   const pedido = document.getElementById('diag-pedido').value.trim();
+  const mandado = (document.getElementById('diag-mandado') || {}).value ? document.getElementById('diag-mandado').value.trim() : '';
   const tipo = document.getElementById('diag-tipo').value;
-  const url = pedido
+  const url = mandado
+    ? '/admin/matching/diagnose?mandado=' + encodeURIComponent(mandado)
+    : pedido
     ? '/admin/matching/diagnose?pedido=' + encodeURIComponent(pedido)
     : '/admin/matching/diagnose?lat=' + encodeURIComponent(lat) + '&lng=' + encodeURIComponent(lng) + '&tipo=' + encodeURIComponent(tipo);
   api(url).then((d) => {
@@ -1919,6 +1962,18 @@ function runDiag(ev) {
       if (p.negocioSinUbicacion) avisos.push('EL LOCAL NO TIENE UBICACIÓN EN EL MAPA: se busca alrededor del centro de Pamplona');
       ctx.innerHTML = '<strong>Pedido ' + esc(p.ref) + '</strong> de ' + esc(p.negocio) + ' · ' + esc(p.status) +
         ' · buscando alrededor de ' + Number(d.lat).toFixed(4) + ', ' + Number(d.lng).toFixed(4) +
+        (avisos.length ? '<br><span style="color:#c62828">' + esc(avisos.join(' · ')) + '</span>' : '');
+    } else if (d.mandado) {
+      const m = d.mandado;
+      const avisos = [];
+      if (m.hasDriver) avisos.push('ya tiene repartidor asignado');
+      if (m.status !== 'SEARCHING') avisos.push('su estado (' + m.status + ') ya no busca repartidor');
+      if (m.sinPunto) avisos.push('NO TIENE PUNTO DE RECOGIDA: se busca alrededor del centro de Pamplona');
+      if (!m.plaza) avisos.push('EL PUNTO CAE LEJOS DE TODA CIUDAD DONDE OPERAMOS: revisa la ubicación del local');
+      ctx.innerHTML = '<strong>Mandado ' + esc(m.ref) + '</strong> · ' + esc(m.status) +
+        ' · recoge en ' + esc(m.pickupAddress) +
+        ' · buscando alrededor de ' + Number(d.lat).toFixed(4) + ', ' + Number(d.lng).toFixed(4) +
+        (m.plazaNombre ? ' (' + esc(m.plazaNombre) + ')' : '') +
         (avisos.length ? '<br><span style="color:#c62828">' + esc(avisos.join(' · ')) + '</span>' : '');
     } else {
       ctx.textContent = '';
@@ -1964,7 +2019,37 @@ var PORTAL_URL = '${PORTAL_BASE_URL}';
 
 function searchBusinesses(ev) { ev.preventDefault(); loadBusinesses(); }
 
+// La lista de comercios mal ubicados y el selector de ciudad de la ficha
+// viajan con la pestaña: son de la misma pantalla.
+const MOTIVO_UBICACION = {
+  'sin-punto': 'Sin punto en el mapa',
+  'sin-plaza': 'Sin ciudad: el punto cae lejos de toda ciudad donde operamos',
+  'lejos-de-su-ciudad': 'El punto está lejos de su ciudad',
+};
+function loadUbicacionDudosa() {
+  api('/admin/businesses/ubicacion-dudosa').then((rows) => {
+    const tb = document.getElementById('ubicacion-body');
+    if (!tb) return;
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="4" class="empty">Todos los comercios están bien ubicados.</td></tr>'; return; }
+    tb.innerHTML = rows.map((b) => '<tr><td><strong>' + esc(b.name) + '</strong><div style="font-size:.72rem;color:#777">' + esc(b.address) + '</div></td>' +
+      '<td>' + esc(b.citySlug || '—') + '</td>' +
+      '<td>' + esc(MOTIVO_UBICACION[b.motivo] || b.motivo) + '</td>' +
+      '<td><a class="btn-sm" style="background:#e0f2f1;color:#00695c;text-decoration:none" href="' + PORTAL_URL + '/negocio/' + esc(b.token) + '/ajustes" target="_blank" rel="noopener">Fijar en el mapa</a></td></tr>').join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+function cargarCiudadesFicha() {
+  const sel = document.getElementById('ficha-ciudad');
+  if (!sel || sel.dataset.listo) return;
+  api('/admin/municipalities').then((rows) => {
+    sel.innerHTML = '<option value="">Elige la ciudad</option>' + rows.map((m) =>
+      '<option value="' + esc(m.slug) + '">' + esc(m.name) + '</option>').join('');
+    sel.dataset.listo = '1';
+  }).catch(() => { sel.innerHTML = '<option value="">No se pudieron cargar</option>'; });
+}
+
 function loadBusinesses() {
+  loadUbicacionDudosa();
+  cargarCiudadesFicha();
   var q = (document.getElementById('biz-q') || {}).value || '';
   api('/admin/businesses' + (q ? '?q=' + encodeURIComponent(q) : '')).then((rows) => {
     const tb = document.getElementById('businesses-body');
@@ -2002,10 +2087,14 @@ function abrirFicha(ev) {
     address: (document.getElementById('ficha-direccion') || {}).value || '',
     category: (document.getElementById('ficha-categoria') || {}).value || '',
     phone: (document.getElementById('ficha-telefono') || {}).value || '',
+    city: (document.getElementById('ficha-ciudad') || {}).value || '',
   };
+  if (!body.city) { showMsg('Elige la ciudad del comercio: sin ella la dirección se ubica en cualquier ciudad del país.', true); return; }
   api('/admin/businesses/listado', { method: 'POST', body: JSON.stringify(body) })
     .then((f) => {
-      showMsg('Ficha abierta. Carga su carta desde el portal.', false);
+      showMsg(f.ubicada
+        ? 'Ficha abierta. Carga su carta desde el portal.'
+        : 'Ficha abierta, pero no pudimos ubicarla en el mapa de su ciudad: fija el punto desde Ajustes del portal.', !f.ubicada);
       const caja = document.getElementById('ficha-resultado');
       if (caja) {
         caja.innerHTML = 'Portal del comercio: <a href="' + PORTAL_URL + esc(f.portalPath) +

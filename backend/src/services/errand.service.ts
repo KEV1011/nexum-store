@@ -7,7 +7,7 @@ import {
 } from '../types';
 import { DriverStatus, ErrandStatus as ErrandStatusDb } from '@prisma/client';
 import { fichaPorConductor, type DriverCardFields } from '../lib/driver-card';
-import { ERRAND_SERVICE_FEE } from '../config/constants';
+import { ERRAND_SERVICE_FEE, INTERCITY_CITY_COORDS } from '../config/constants';
 import { prisma } from '../lib/prisma';
 import {
   ETA_MAXIMO_MIN, ETA_MINIMO_MIN, saneaEtaDeclarada, textoEtaDeclarada,
@@ -72,6 +72,7 @@ type DbErrand = {
   // Opcionales porque no todas las consultas los piden en su `select`: donde
   // no vengan, el DTO simplemente no los lleva.
   etaMinutes?: number | null; etaSetAt?: Date | null;
+  noDriverNotifiedAt?: Date | null;
 };
 
 function _toDTO(e: DbErrand, ficha: DriverCardFields = {}): ClientErrandDTO {
@@ -106,6 +107,7 @@ function _toDTO(e: DbErrand, ficha: DriverCardFields = {}): ClientErrandDTO {
     signedAt: e.signedAt?.toISOString(),
     etaMinutes: e.etaMinutes ?? undefined,
     etaSetAt: e.etaSetAt?.toISOString(),
+    ...(e.status === 'SEARCHING' && e.noDriverNotifiedAt != null ? { sinRepartidor: true } : {}),
   };
 }
 
@@ -457,6 +459,47 @@ export function subscribeClientErrand(errandId: string, cb: ErrandCallback): () 
 export async function getClientErrandSnapshot(errandId: string): Promise<ClientErrandDTO | null> {
   const errand = await prisma.errand.findUnique({ where: { id: errandId } });
   return errand ? _toDTO(errand, await fichaPorConductor(errand.driverId)) : null;
+}
+
+/**
+ * Le cuenta a quien esté siguiendo el mandado cómo está ahora. Lo usa el
+ * despacho al rendirse: sin esto, el cliente con el WebSocket abierto seguía
+ * viendo «buscando» —el aviso solo salía por push— y el mandado parecía
+ * colgado para siempre.
+ */
+export async function avisarEstadoMandado(errandId: string): Promise<void> {
+  const dto = await getClientErrandSnapshot(errandId);
+  if (dto) _notify(errandId, dto);
+}
+
+/**
+ * El cliente pide volver a buscar después de que la búsqueda se rindió.
+ *
+ * Solo el dueño, solo si sigue sin repartidor y solo si de verdad se rindió:
+ * reabrir una búsqueda en curso lanzaría un segundo ciclo y el mismo repartidor
+ * recibiría la oferta dos veces. Devuelve dónde volver a buscar, o null.
+ */
+export async function reabrirBusquedaMandado(
+  clientId: string,
+  errandId: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const r = await prisma.errand.updateMany({
+    where: {
+      id: errandId, userId: clientId, status: 'SEARCHING', driverId: null,
+      noDriverNotifiedAt: { not: null },
+    },
+    data: { noDriverNotifiedAt: null },
+  });
+  if (r.count === 0) return null;
+  const e = await prisma.errand.findUnique({
+    where: { id: errandId },
+    select: { pickupLat: true, pickupLng: true },
+  });
+  void avisarEstadoMandado(errandId);
+  return {
+    lat: e?.pickupLat ?? INTERCITY_CITY_COORDS.pamplona.lat,
+    lng: e?.pickupLng ?? INTERCITY_CITY_COORDS.pamplona.lng,
+  };
 }
 
 export function toErrandRequestDTO(errand: {

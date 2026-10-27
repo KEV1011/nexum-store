@@ -12,6 +12,7 @@
 //  · que lo que se aprueba es un PRESUPUESTO, no un total;
 //  · y que lo que se cobra al final es lo que diga el recibo.
 
+import 'package:nexum_client/features/errands/presentation/providers/errand_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -97,7 +98,21 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
       );
       // Al seguimiento del mandado, que es el de siempre: esta compra ES un
       // mandado, y tener dos pantallas de seguimiento para lo mismo las haría
-      // divergir.
+      // divergir. Pero ese seguimiento lee el mandado ACTIVO del proveedor, y
+      // este lo creó el servidor: hay que dárselo antes de ir, o la pantalla
+      // se abre vacía, rebota al inicio y el cliente nunca ve su compra.
+      final siguiendo =
+          await ref.read(errandProvider.notifier).seguirMandado(r.errandId);
+      if (!mounted) return;
+      if (!siguiendo) {
+        AppSnackbar.showError(
+          context,
+          'Tu compra quedó pedida, pero no pudimos abrir su seguimiento. '
+          'Revisa tu conexión.',
+        );
+        context.go('/home');
+        return;
+      }
       context.go(AppRoutes.errandStatus);
     } on CompraError catch (e) {
       if (!mounted) return;

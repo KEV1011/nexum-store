@@ -407,6 +407,8 @@ export interface RegisterBusinessDTO {
   address: string;
   category: BusinessCategory;
   whatsapp?: string;
+  /** Slug del municipio. Sin él, la dirección se resuelve en cualquier ciudad. */
+  city?: string;
 }
 
 // ─── Delivery Orders ──────────────────────────────────────────────────────────
@@ -1227,6 +1229,12 @@ export interface ClientErrandDTO extends DriverCardFields {
   etaMinutes?: number;
   /** Cuándo lo prometió, para saber si la promesa ya está vieja. */
   etaSetAt?: string;
+  /**
+   * Se agotó la búsqueda y nadie lo tomó. El mandado sigue abierto (el cliente
+   * decide si cancela o vuelve a intentar), pero la pantalla tiene que dejar
+   * de decir «buscando»: quedarse ahí para siempre es la queja que lo destapó.
+   */
+  sinRepartidor?: boolean;
 }
 
 // Sent to driver when a mandado is dispatched

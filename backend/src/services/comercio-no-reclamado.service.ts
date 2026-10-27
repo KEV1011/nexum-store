@@ -24,6 +24,9 @@ import {
   type LineaDeCompra,
 } from '../lib/comercio-no-reclamado';
 import { requestClientErrand, type ClientErrandWithPinsDTO } from './errand.service';
+import { coordsOf } from './municipality.service';
+import { anclaDeCompra, type OrigenAncla } from '../lib/ubicacion-comercio';
+import { INTERCITY_CITY_COORDS } from '../config/constants';
 import type { BusinessCategory } from '@prisma/client';
 
 export class CompraError extends Error {}
@@ -64,6 +67,13 @@ export interface ResultadoCompra {
   errand: ClientErrandWithPinsDTO;
   /** Para arrancar el ciclo de despacho anclado al local, no al centro. */
   pickup: { lat: number; lng: number } | null;
+  /**
+   * Dónde se busca repartidor: el local si su punto es de fiar; si no, el
+   * centro de SU ciudad; si tampoco se sabe, la entrega del cliente. Ver
+   * `anclaDeCompra`: un local guardado en otra ciudad dejaba la compra
+   * buscando repartidor donde no había nadie.
+   */
+  ancla: { lat: number; lng: number; origen: OrigenAncla };
   /** Lo que sumaba la lista a precios de la carta, para enseñárselo al cliente. */
   referencial: number;
   presupuesto: number;
@@ -83,7 +93,7 @@ export async function comprarEnComercio(
   const negocio = await prisma.business.findUnique({
     where: { id: dto.businessId },
     select: {
-      id: true, name: true, address: true, lat: true, lng: true,
+      id: true, name: true, address: true, lat: true, lng: true, citySlug: true,
       category: true, claimed: true, isOpen: true, unpaidSince: true,
     },
   });
@@ -135,22 +145,36 @@ export async function comprarEnComercio(
   const referencial = sumaReferencial(lineas);
   const presupuesto = presupuestoSugerido(lineas);
 
+  const plaza = negocio.citySlug ? await coordsOf(negocio.citySlug) : null;
+  const local = negocio.lat != null && negocio.lng != null ? { lat: negocio.lat, lng: negocio.lng } : null;
+  const entrega = typeof dto.dropoffLat === 'number' && typeof dto.dropoffLng === 'number'
+    ? { lat: dto.dropoffLat, lng: dto.dropoffLng }
+    : null;
+  const ancla = anclaDeCompra(local, plaza, entrega, INTERCITY_CITY_COORDS.pamplona);
+  // El punto del local va en el mandado solo si es de fiar: si no, el
+  // repartidor vería el pin a cientos de kilómetros y la dirección escrita al
+  // lado. Sin él va el centro de SU ciudad, que es lo que la oferta ya hace
+  // cuando falta el punto (antes caía al de Pamplona) y lo que usa el rescate
+  // tras un reinicio para volver a buscar en el mismo sitio. La entrega del
+  // cliente NO se guarda como recogida: el pin estaría en su casa.
+  const pickupFiable = ancla.origen === 'comercio' || ancla.origen === 'ciudad'
+    ? { lat: ancla.lat, lng: ancla.lng }
+    : null;
+
   const errand = await requestClientErrand(clientId, {
     category: CATEGORIA_MANDADO[negocio.category] as 'food',
     description: listaDeCompra(negocio.name, lineas),
     pickupAddress: negocio.address,
     dropoffAddress: dto.dropoffAddress.trim(),
-    ...(negocio.lat != null ? { pickupLat: negocio.lat } : {}),
-    ...(negocio.lng != null ? { pickupLng: negocio.lng } : {}),
+    ...(pickupFiable ? { pickupLat: pickupFiable.lat, pickupLng: pickupFiable.lng } : {}),
     purchaseBudget: presupuesto,
     ...(dto.notes?.trim() ? { notes: dto.notes.trim() } : {}),
   });
 
   return {
     errand,
-    pickup: negocio.lat != null && negocio.lng != null
-      ? { lat: negocio.lat, lng: negocio.lng }
-      : null,
+    pickup: pickupFiable,
+    ancla,
     referencial,
     presupuesto,
   };

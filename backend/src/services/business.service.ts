@@ -20,7 +20,7 @@ import { maskPhone } from './safe-contact.service';
 import { normalizeColombianPhone } from './auth.service';
 import { codigoEsLlaveMaestra } from './otp.service';
 import { ClaveError, comprobarClave, emitirPaseClave, leerPaseClave } from './clave-personal.service';
-import { geocodeAddress } from './geo.service';
+import { ubicarComercio } from './ubicacion-comercio.service';
 import { plazaDeCoordenadas } from './municipality.service';
 import {
   saneaDestinos, destinosDesdeBD, type DestinoEnvio,
@@ -224,11 +224,16 @@ const service = {
     // negocio en el mapa. Best-effort puro: si no hay llave de Google o la
     // dirección no se resuelve, el registro continúa igual (el dueño puede
     // fijar el punto después desde Ajustes).
-    const geo = await geocodeAddress(dto.address).catch(() => null);
-    // La plaza sale del MISMO resolutor que la de viajes y conductores. Si el
-    // comercio usara otro criterio, un pedido podría ser «de Cúcuta» para la
-    // tienda y de otra plaza para el tablero, y nadie sabría cuál miente.
-    const citySlug = await plazaDeCoordenadas(geo?.lat, geo?.lng);
+    //
+    // CON la ciudad que declara el dueño: sin ella Google resolvía la dirección
+    // en cualquier ciudad del país y el negocio quedaba a cientos de
+    // kilómetros. Un punto lejos de su ciudad no se guarda. La plaza sale del
+    // MISMO resolutor que la de viajes y conductores (`plazaDeCoordenadas`).
+    const ubicacion = await ubicarComercio(dto.address, dto.city);
+    const geo = ubicacion.lat != null && ubicacion.lng != null
+      ? { lat: ubicacion.lat, lng: ubicacion.lng }
+      : null;
+    const citySlug = ubicacion.citySlug;
     const biz = await prisma.business.create({
       data: {
         name: dto.name,

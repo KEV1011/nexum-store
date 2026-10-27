@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { BACKEND_URL } from '../../backend'
+import { useMunicipios } from '../../empresa/useMunicipios'
 import {
   Package,
   Store,
@@ -43,6 +44,8 @@ interface FormState {
   phone: string
   whatsapp: string
   address: string
+  /** Slug del municipio. Sin él la dirección se ubicaba en cualquier ciudad. */
+  city: string
   category: string
 }
 
@@ -57,6 +60,7 @@ const EMPTY_FORM: FormState = {
   phone: '',
   whatsapp: '',
   address: '',
+  city: '',
   category: 'restaurant',
 }
 
@@ -167,6 +171,7 @@ export default function RegistroPage() {
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [registered, setRegistered] = useState<RegisteredBusiness | null>(null)
+  const { municipios } = useMunicipios()
 
   const set = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }))
@@ -176,6 +181,7 @@ export default function RegistroPage() {
     form.ownerName.trim().length >= 2 &&
     form.phone.trim().length >= 7 &&
     form.address.trim().length >= 4 &&
+    form.city !== '' &&
     !submitting
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -194,6 +200,7 @@ export default function RegistroPage() {
           phone: form.phone.trim(),
           whatsapp: form.whatsapp.trim() || undefined,
           address: form.address.trim(),
+          city: form.city,
           category: form.category,
         }),
       })
@@ -314,6 +321,21 @@ export default function RegistroPage() {
                   maxLength={120}
                   required
                 />
+              </Field>
+
+              {/* La ciudad acota dónde se busca la dirección: «Calle 5 # 3-40»
+                  existe en media Colombia, y sin ella el negocio quedaba
+                  ubicado en otra ciudad y sus pedidos no encontraban
+                  repartidor. */}
+              <Field label="Ciudad">
+                <select className={INPUT_CLASS} value={form.city} onChange={set('city')} required>
+                  <option value="">Elige tu ciudad</option>
+                  {municipios.map((m) => (
+                    <option key={m.slug} value={m.slug}>
+                      {m.name} · {m.department}
+                    </option>
+                  ))}
+                </select>
               </Field>
 
               <Field label="Categoría">
