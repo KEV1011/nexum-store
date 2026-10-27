@@ -28,9 +28,27 @@
 //      error barato es el segundo.
 
 import { tituloDeSeccion, type LineaCarta } from './carta-foto';
+import { esTokenDeTamano, juntarMedidas } from './palabras-tamano';
 
 /** Cómo se llama el grupo que se crea. Editable por el dueño en el portal. */
 export const GRUPO_TAMANO = 'Tamaño';
+
+/** El grupo cuando las opciones no son tamaños («en agua / en leche»). */
+export const GRUPO_OPCION = 'Opción';
+
+/** Cada palabra de la opción nombra un tamaño («Personal», «1/2», «350ml»). */
+function nombraUnTamano(nombre: string): boolean {
+  const tokens = juntarMedidas(nombre).split(/\s+/).filter(Boolean);
+  return tokens.length > 0 && tokens.every(esTokenDeTamano);
+}
+
+/**
+ * Lo que NUNCA se agrupa por tamaño aunque traiga la palabra: un combo, una
+ * promoción. «Combo personal» (perro + papas + jugo) y «Combo familiar» (cuatro
+ * hamburguesas…) son dos productos con contenido distinto; fundirlos hacía
+ * desaparecer uno del catálogo.
+ */
+const BASE_QUE_NO_ES_UN_PLATO = /^(?:combo|combos|promo|promocion|promociones|oferta|ofertas|paquete|plan)\b/;
 
 /**
  * Cuántos tamaños puede tener un plato.
@@ -40,60 +58,6 @@ export const GRUPO_TAMANO = 'Tamaño';
  * números en un renglón es una columna entera que se leyó torcida.
  */
 export const MAX_TAMANOS = 6;
-
-/**
- * Las palabras con las que una carta colombiana nombra un tamaño.
- *
- * Sin tildes y en minúscula: se comparan contra el token normalizado, para que
- * «PEQUEÑA» y «pequeña» casen igual.
- *
- * Lo que NO está, a propósito: «especial», «premium», «de la casa». Son otra
- * receta o un plato mejor, no el mismo en otro tamaño, y además «especial» es
- * una de las palabras con las que se titulan las secciones.
- */
-const PALABRAS_DE_TAMANO = [
-  'pequena', 'pequeno', 'pequenita', 'peq', 'chica', 'chico', 'mini',
-  'mediana', 'mediano', 'med', 'media', 'medio',
-  'grande', 'grd', 'familiar', 'jumbo', 'gigante',
-  'personal', 'individual', 'sencilla', 'sencillo', 'simple',
-  'doble', 'triple', 'junior',
-  'entera', 'entero', 'completa', 'completo',
-  'cuarto', '1/4', '1/2', '3/4',
-];
-
-/** Unidades de medida que en una carta hacen de tamaño («350 ml», «12 oz»). */
-const UNIDADES = 'oz|onz|onzas|ml|cc|lt|lts|litro|litros|l'
-  + '|gr|grs|gramos|g|kg|kilo|kilos|libra|libras|lb';
-
-const RE_MEDIDA = new RegExp(`^\\d+(?:[.,]\\d+)?(?:${UNIDADES})$`, 'i');
-
-/**
- * Pega la unidad a su número para que «350 ml» sea UN token.
- *
- * Así la clasificación es una sola pasada por palabras y el orden en que
- * aparecen se conserva, en vez de sacar las medidas por un lado con un
- * `replace` y las palabras por otro —que es donde «Jugo 350 ml grande» saldría
- * con la etiqueta al revés—.
- */
-function juntarMedidas(texto: string): string {
-  return texto.replace(
-    new RegExp(`(\\d+(?:[.,]\\d+)?)\\s+(${UNIDADES})\\b`, 'gi'),
-    '$1$2',
-  );
-}
-
-/**
- * Un token listo para comparar: sin la puntuación de los bordes, sin tildes y
- * en minúscula. Se conserva lo de DENTRO —el punto de «1.5lt» y la barra de
- * «1/4»— porque ahí sí significa algo.
- */
-function tokenLimpio(token: string): string {
-  return token
-    .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase();
-}
 
 /** El nombre base, para comparar dos filas entre sí. */
 function baseNormalizada(texto: string): string {
@@ -129,9 +93,7 @@ export function trocearTamano(
   const base: string[] = [];
 
   for (const token of tokens) {
-    const limpio = tokenLimpio(token);
-    const esTamano = limpio !== ''
-      && (PALABRAS_DE_TAMANO.includes(limpio) || RE_MEDIDA.test(limpio));
+    const esTamano = esTokenDeTamano(token);
     // La etiqueta se guarda COMO ESTÁ ESCRITA, solo sin la puntuación de los
     // bordes: `tokenLimpio` quita las tildes y la ñ para poder comparar, y
     // usar eso para mostrar dejaría el tamaño en «Pequena».
@@ -229,6 +191,7 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
     if (l.rol === 'adicional' || l.rol === 'guarnicion') return;
     const troceado = trocearTamano(l.nombre);
     if (!troceado) return;
+    if (BASE_QUE_NO_ES_UN_PLATO.test(baseNormalizada(troceado.base))) return;
     // La sección entra en la clave: una «Grande» de Bebidas y otra de Picadas
     // no son el mismo plato aunque el nombre base coincidiera.
     const clave = `${baseNormalizada(l.seccion)}\u0000${baseNormalizada(troceado.base)}`;
@@ -293,6 +256,34 @@ export function sugerirVariantes(lineas: LineaCarta[]): VarianteSugerida[] {
     if (l.rol === 'adicional' || l.rol === 'guarnicion') continue;
     if (precios.length < 2 || precios.length > MAX_TAMANOS) continue;
     if (!l.nombre || l.nombre.trim().length < 2) continue;
+
+    // La carta dijo cómo se llama cada precio —el encabezado de la tabla o el
+    // propio nombre («en agua / en leche»)—: los nombres van con SU precio,
+    // por posición, y la sugerencia nace lista como la del camino A.
+    const nombres = l.tamanos?.length === precios.length ? l.tamanos : null;
+    if (nombres && new Set(nombres.map(baseNormalizada)).size === nombres.length) {
+      const pares = precios
+        .map((precio, orden) => ({ precio, orden, nombre: nombres[orden]! }))
+        .sort(porPrecio);
+      const precioBase = pares[0]!.precio;
+      salida.push({
+        nombre: tituloDeSeccion(l.nombre.trim()),
+        seccion: l.seccion,
+        precioBase,
+        // «Tamaño» solo si lo son: «en agua / en leche» es otra cosa.
+        grupo: nombres.every(nombraUnTamano) ? GRUPO_TAMANO : GRUPO_OPCION,
+        opciones: pares.map((p) => ({
+          nombre: tituloDeSeccion(p.nombre),
+          precio: p.precio,
+          precioDelta: p.precio - precioBase,
+        })),
+        lineas: [l.linea],
+        ...(l.descripcion ? { descripcion: l.descripcion } : {}),
+        faltanNombres: false,
+        rol: l.rol === 'acompanamiento' ? 'acompanamiento' : 'plato',
+      });
+      continue;
+    }
 
     const unicos = [...new Set(precios)].sort((a, b) => a - b);
     // Tres veces el mismo número no son tres tamaños.

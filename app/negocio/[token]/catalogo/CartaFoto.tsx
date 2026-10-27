@@ -62,6 +62,13 @@ interface FilaEditable {
   motivoRol?: string
 }
 
+/** Un renglón de la foto que no es de la carta (teléfono, dirección…). */
+interface RenglonIgnorado {
+  linea: number
+  texto: string
+  motivo: string
+}
+
 /** Lo que la carta dice que traen los platos, en edición. */
 interface NotaEditable {
   id: number
@@ -125,6 +132,9 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
   // «Acompañados de papa a la francesa»: va a la descripción de los platos.
   const [notas, setNotas] = useState<NotaEditable[]>([])
   const [destinosNota, setDestinosNota] = useState<Record<number, string[]>>({})
+  // Teléfono, dirección, horario: se leyeron y se dejaron fuera a propósito.
+  // Se enseñan para que el dueño vea que no se perdió un plato.
+  const [ignoradas, setIgnoradas] = useState<RenglonIgnorado[]>([])
   // Para el agente revisor: la foto (se le vuelve a mandar, reducida), el texto
   // que leyó el OCR (su fuente fiable de precios) y si el servidor lo tiene
   // activado. `lectura` cambia con cada foto: es lo que dispara la revisión.
@@ -151,6 +161,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
           secciones?: string[]
           variantes?: VarianteSugerida[]
           notas?: Array<{ seccion: string; texto: string }>
+          ignoradas?: RenglonIgnorado[]
           textoCrudo?: string
           revisorIA?: boolean
         }
@@ -203,6 +214,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
       setGuarnicionCfg({})
       setNotas((json.data.notas ?? []).map((n, i) => ({ id: i, seccion: n.seccion, texto: n.texto })))
       setDestinosNota({})
+      setIgnoradas(json.data.ignoradas ?? [])
       setArchivo(file)
       setTextoCrudo(json.data.textoCrudo ?? '')
       setRevisorIA(json.data.revisorIA === true)
@@ -405,6 +417,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
         setFilas(null)
         setVariantes([])
         setNotas([])
+        setIgnoradas([])
         onImported()
       } else {
         setError(json.error ?? 'No se pudo crear el catálogo.')
@@ -863,6 +876,22 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
             </div>
           )}
 
+          {ignoradas.length > 0 && (
+            <details className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              <summary className="cursor-pointer font-semibold text-slate-700">
+                Dejamos fuera {ignoradas.length} renglón{ignoradas.length === 1 ? '' : 'es'} que no
+                {ignoradas.length === 1 ? ' es un plato' : ' son platos'} (teléfono, dirección, horario…)
+              </summary>
+              <ul className="mt-2 space-y-1">
+                {ignoradas.map((r) => (
+                  <li key={r.linea}>
+                    <span className="text-slate-800">«{r.texto}»</span> — {r.motivo}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
           {notas.length > 0 && (
             <div className="mt-4 space-y-2">
               <h3 className="flex items-center gap-1.5 text-xs font-bold text-slate-900">
@@ -1025,7 +1054,7 @@ export function CartaFoto({ token, onImported }: { token: string; onImported: ()
               type="button"
               onClick={() => {
                 setFilas(null); setVariantes([]); setDestinos({}); setGuarnicionCfg({})
-                setNotas([]); setDestinosNota({}); setError(null)
+                setNotas([]); setDestinosNota({}); setIgnoradas([]); setError(null)
               }}
               className={BOTON.secundario}
             >

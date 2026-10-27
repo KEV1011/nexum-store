@@ -31,6 +31,7 @@ class Antojo {
     required this.clave,
     required this.nombre,
     required this.palabras,
+    this.soloComoPlato = false,
   });
 
   /// Identificador estable: también es el nombre de su ilustración.
@@ -42,6 +43,12 @@ class Antojo {
   /// Palabras normalizadas (sin tildes, minúscula) que lo delatan. Casan como
   /// palabra entera, con o sin plural («taco» casa «tacos»).
   final List<String> palabras;
+
+  /// Sus palabras solo cuentan cuando nombran EL PLATO, no un ingrediente:
+  /// «Pollo asado» y «1/2 pollo broaster» son pollo; «Arroz con pollo»,
+  /// «Ajiaco con pollo» o «Sopa de pollo» no lo son — ahí el pollo va dentro
+  /// de otra cosa, y quien tiene antojo de pollo asado no los busca.
+  final bool soloComoPlato;
 
   /// La ilustración 3D (Fluent Emoji, MIT). Ver
   /// `tools/procesar-ilustraciones-3d.py --antojo`.
@@ -96,16 +103,24 @@ const List<Antojo> kAntojos = [
     'huevos revueltos', 'huevos rancheros', 'huevos al gusto', 'tamal',
     'pancake', 'caldo',
   ]),
+  // Pollo ANTES que asados: «Pollo asado» y «Alitas BBQ» son pollo, aunque
+  // lleven «asado» y «bbq», que también son palabras de la parrilla.
+  Antojo(
+    clave: 'pollo',
+    nombre: 'Pollo',
+    soloComoPlato: true,
+    palabras: [
+      'pollo', 'alita', 'broaster', 'nugget', 'pechuga', 'apanado',
+    ],
+  ),
   Antojo(clave: 'asados', nombre: 'Asados', palabras: [
     'churrasco', 'punta de anca', 'costilla', 'bbq', 'parrilla', 'lomo',
     'carne asada', 'asado', 'picada', 'chorizo', 'solomito', 'baby beef',
     'sobrebarriga', 'morcilla', 'parrillada',
   ]),
-  Antojo(clave: 'pollo', nombre: 'Pollo', palabras: [
-    'pollo', 'alita', 'broaster', 'nugget', 'pechuga', 'apanado',
-  ]),
   Antojo(clave: 'almuerzos', nombre: 'Almuerzos', palabras: [
     'almuerzo', 'corrientazo', 'ejecutivo', 'menu del dia', 'plato del dia',
+    'arroz con pollo',
     'bandeja paisa', 'sancocho', 'ajiaco', 'sopa', 'mondongo', 'frijolada',
   ]),
   Antojo(clave: 'postres', nombre: 'Postres', palabras: [
@@ -156,20 +171,51 @@ final Map<String, RegExp> _patrones = {
     ),
 };
 
+/// Palabras que, justo delante, convierten lo que sigue en un INGREDIENTE:
+/// «empanada DE pollo», «arroz CON pollo», «pizza Y pollo».
+const Set<String> _enlacesDeIngrediente = {
+  'de', 'del', 'con', 'y', 'en', 'al', 'a', 'la', 'sin', 'extra', 'mas',
+};
+
+/// La coincidencia nombra el plato y no un ingrediente (ver
+/// [Antojo.soloComoPlato]).
+bool _nombraElPlato(String normalizado, Match m) {
+  final antes = normalizado.substring(0, m.start).trim();
+  if (antes.isEmpty) return true;
+  final previa = antes.split(' ').last;
+  return !_enlacesDeIngrediente.contains(previa);
+}
+
 /// El antojo de un texto ya normalizado, o null.
 Antojo? _antojoDeTexto(String normalizado) {
   if (normalizado.isEmpty) return null;
   for (final a in kAntojos) {
-    if (_patrones[a.clave]!.hasMatch(normalizado)) return a;
+    final patron = _patrones[a.clave]!;
+    if (!a.soloComoPlato) {
+      if (patron.hasMatch(normalizado)) return a;
+      continue;
+    }
+    if (patron.allMatches(normalizado).any((m) => _nombraElPlato(normalizado, m))) {
+      return a;
+    }
   }
   return null;
 }
 
+/// Un combo o una promoción no dice en su nombre qué es («Combo 1»): lo dice
+/// lo que trae («Hamburguesa sencilla + papas + gaseosa»).
+final RegExp _esCombo =
+    RegExp(r'(^| )(combo|combos|promo|promocion|oferta|paquete)( |$)');
+
 /// El antojo de un plato (reglas 1, 2 y 3). Null si no es de ninguno.
 Antojo? antojoDeProducto(ProductEntity p) {
   if (p.suggestAsAddon) return null;
-  return _antojoDeTexto(normalizarTexto(p.name)) ??
-      _antojoDeTexto(normalizarTexto(p.category));
+  final nombre = normalizarTexto(p.name);
+  return _antojoDeTexto(nombre) ??
+      _antojoDeTexto(normalizarTexto(p.category)) ??
+      (_esCombo.hasMatch(nombre)
+          ? _antojoDeTexto(normalizarTexto(p.description))
+          : null);
 }
 
 /// Los platos de un local que son de ese antojo.
@@ -222,26 +268,128 @@ class CoincidenciaBusqueda {
   bool get algo => porNombre || platos.isNotEmpty;
 }
 
+/// Distancia de edición con transposición: «amburguesa» → «hamburguesa» es 1,
+/// «pizaz» → «pizza» también.
+int distanciaDeEdicion(String a, String b) {
+  final m = a.length;
+  final n = b.length;
+  final d = List.generate(m + 1, (i) => List<int>.filled(n + 1, 0));
+  for (var i = 0; i <= m; i++) {
+    d[i][0] = i;
+  }
+  for (var j = 0; j <= n; j++) {
+    d[0][j] = j;
+  }
+  for (var i = 1; i <= m; i++) {
+    for (var j = 1; j <= n; j++) {
+      final costo = a[i - 1] == b[j - 1] ? 0 : 1;
+      var v = d[i - 1][j] + 1;
+      if (d[i][j - 1] + 1 < v) v = d[i][j - 1] + 1;
+      if (d[i - 1][j - 1] + costo < v) v = d[i - 1][j - 1] + costo;
+      if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1]) {
+        if (d[i - 2][j - 2] + 1 < v) v = d[i - 2][j - 2] + 1;
+      }
+      d[i][j] = v;
+    }
+  }
+  return d[m][n];
+}
+
+/// Cuántas letras se le perdonan a una palabra buscada. Las cortas no: una
+/// palabra de cinco letras a una de distancia suele ser OTRA palabra de
+/// verdad («bollo» y «pollo», «pasa» y «pasta»), y entonces la búsqueda
+/// enseñaría platos que nadie pidió.
+int _toleranciaDe(String palabra) =>
+    palabra.length >= 9 ? 2 : (palabra.length >= 6 ? 1 : 0);
+
+/// «hamburguesas» → «hamburguesa»: el plural no cuenta como errata.
+String _singular(String palabra) {
+  if (palabra.length > 4 && palabra.endsWith('es')) {
+    return palabra.substring(0, palabra.length - 2);
+  }
+  if (palabra.length > 3 && palabra.endsWith('s')) {
+    return palabra.substring(0, palabra.length - 1);
+  }
+  return palabra;
+}
+
+/// La palabra buscada está en el texto: al PRINCIPIO de una de sus palabras
+/// («hambur» casa «hamburguesa», quien escribe no ha terminado), o a una
+/// errata de distancia («amburguesa»). Ya no basta con aparecer en medio de
+/// otra: «pan» encontraba «empanada» y «ron» encontraba «macarrones».
+bool _palabraEnTexto(String palabra, List<String> palabrasDelTexto) {
+  final tope = _toleranciaDe(palabra);
+  for (final w in palabrasDelTexto) {
+    if (w.startsWith(palabra)) return true;
+    if (tope == 0) continue;
+    if ((w.length - palabra.length).abs() > tope + 1) continue;
+    if (distanciaDeEdicion(_singular(palabra), _singular(w)) <= tope) return true;
+  }
+  return false;
+}
+
+/// Todas las palabras buscadas están en el texto.
+bool _casaConsulta(List<String> buscadas, String textoNormalizado) {
+  if (textoNormalizado.isEmpty) return false;
+  final palabras = textoNormalizado.split(' ');
+  return buscadas.every((b) => _palabraEnTexto(b, palabras));
+}
+
+/// El antojo que nombra lo buscado, aunque venga con una errata
+/// («amburguesas», «piza»).
+Antojo? _antojoDeConsulta(String q) {
+  final exacto = _antojoDeTexto(q);
+  if (exacto != null) return exacto;
+  for (final palabra in q.split(' ')) {
+    final tope = _toleranciaDe(palabra);
+    if (tope == 0) continue;
+    final buscada = _singular(palabra);
+    for (final a in kAntojos) {
+      for (final candidata in a.palabras) {
+        // Solo hacia palabras largas del catálogo: «alita» o «taco» tienen
+        // vecinas que también son palabras.
+        if (candidata.contains(' ') || candidata.length < 6) continue;
+        if (distanciaDeEdicion(buscada, candidata) <= tope) return a;
+      }
+    }
+  }
+  return null;
+}
+
 /// Busca `consulta` en un local. Sin tildes ni mayúsculas: «salchipapa» casa
-/// «SALCHIPAPÁS».
+/// «SALCHIPAPÁS». Perdona una errata («amburguesa»).
+///
+/// Los platos salen EN ORDEN de lo que más se parece a lo buscado: primero los
+/// que SON ese antojo, luego los que lo llevan en el nombre, y al final los
+/// que solo lo traen como ingrediente. Quien busca «pollo» quiere ver el pollo
+/// asado antes que la empanada de pollo — pero la empanada también sale.
 CoincidenciaBusqueda buscarEnComercio(BusinessEntity b, String consulta) {
   final q = normalizarTexto(consulta);
   if (q.length < kMinLetrasBusqueda) {
     return const CoincidenciaBusqueda(porNombre: false, platos: []);
   }
-  final antojoBuscado = _antojoDeTexto(q);
+  final buscadas = q.split(' ');
+  final antojoBuscado = _antojoDeConsulta(q);
+  final conPuesto = <(int, int, ProductEntity)>[];
+  var orden = 0;
+  for (final p in b.products) {
+    if (p.suggestAsAddon) continue;
+    final esDelAntojo =
+        antojoBuscado != null && antojoDeProducto(p)?.clave == antojoBuscado.clave;
+    final porNombre = _casaConsulta(buscadas, normalizarTexto(p.name));
+    final porLoDemas = _casaConsulta(buscadas, normalizarTexto(p.category)) ||
+        _casaConsulta(buscadas, normalizarTexto(p.description));
+    if (!esDelAntojo && !porNombre && !porLoDemas) continue;
+    final puesto = esDelAntojo ? 0 : (porNombre ? 1 : 2);
+    conPuesto.add((puesto, orden++, p));
+  }
+  conPuesto.sort((x, y) {
+    final c = x.$1.compareTo(y.$1);
+    return c != 0 ? c : x.$2.compareTo(y.$2);
+  });
   return CoincidenciaBusqueda(
-    porNombre: normalizarTexto(b.name).contains(q),
-    platos: [
-      for (final p in b.products)
-        if (!p.suggestAsAddon &&
-            (normalizarTexto(p.name).contains(q) ||
-                normalizarTexto(p.category).contains(q) ||
-                normalizarTexto(p.description).contains(q) ||
-                (antojoBuscado != null &&
-                    antojoDeProducto(p)?.clave == antojoBuscado.clave)))
-          p,
-    ],
+    porNombre: _casaConsulta(buscadas, normalizarTexto(b.name)),
+    platos: [for (final e in conPuesto) e.$3],
   );
 }
 

@@ -300,6 +300,21 @@ export function preciosPermitidos(ctx: ContextoRevision): Set<number> {
   return s;
 }
 
+/**
+ * El precio sale de un renglón de la carta que nombra este plato y trae VARIOS
+ * precios. Se busca por el nombre y no por el número de línea porque el texto
+ * del OCR y las filas medidas de la foto no se numeran igual.
+ */
+function precioDeUnaLineaConVarios(nombre: string, precio: number, textoCrudo: string): boolean {
+  const n = normalizar(nombre);
+  if (n.length < 3) return false;
+  return textoCrudo.split('\n').some((renglon) => {
+    if (!` ${normalizar(renglon)} `.includes(` ${n} `)) return false;
+    const precios = preciosDeLinea(renglon);
+    return precios.length > 1 && precios.includes(precio);
+  });
+}
+
 function seccionPermitida(seccion: string, filas: FilaRevisable[], ctx: ContextoRevision): boolean {
   const n = normalizar(seccion);
   if (!n) return false;
@@ -345,6 +360,12 @@ export function motivoParaDescartar(
       if (c.precio < PRECIO_MIN || c.precio > PRECIO_MAX) return 'precio fuera de rango';
       if (c.precio === fila.precio) return 'no cambia nada';
       if (!preciosPermitidos(ctx).has(c.precio)) return 'ese precio no está impreso en la carta';
+      // Quedarse con UNO de los precios de una línea que trae varios es el
+      // error caro de siempre: la pizza familiar vendida al precio de la
+      // personal. Eso se resuelve agrupando tamaños, no eligiendo un número.
+      if (fila.precio === null && precioDeUnaLineaConVarios(fila.nombre, c.precio, ctx.textoCrudo)) {
+        return 'esa línea trae varios precios (tamaños): se agrupan, no se deja uno';
+      }
       return null;
     }
 

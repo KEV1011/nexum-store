@@ -121,9 +121,10 @@ function posicionDelCorte(nombre: string): { corte: number; salto: number } | nu
   const abre = nombre.indexOf('(');
   if (abre > 0) candidatos.push({ corte: abre, salto: 1 });
 
-  // 2. Dos puntos, siempre que no estén entre dígitos («12:30» es una hora,
-  //    y «1:2» una proporción).
-  const dosPuntos = nombre.search(/(?<!\d):(?!\d)/);
+  // 2. Dos puntos, siempre que no estén ENTRE dígitos («12:30» es una hora,
+  //    y «1:2» una proporción). Con un dígito solo a un lado sí cortan:
+  //    «Combo 1: Hamburguesa + papas + gaseosa» es el combo y lo que trae.
+  const dosPuntos = nombre.search(/(?<!\d):|:(?!\d)/);
   if (dosPuntos > 0) candidatos.push({ corte: dosPuntos, salto: 1 });
 
   // 3. Un guion CON espacios a los lados: «Sandwich de pollo - pollo
