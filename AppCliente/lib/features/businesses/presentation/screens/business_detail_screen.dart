@@ -296,6 +296,24 @@ class _DetailViewState extends ConsumerState<_DetailView> {
           // donde se pinta el nombre del local: la píldora tapaba el nombre
           // («BETO» asomaba por debajo) y ocupaba todo el ancho.
           SliverToBoxAdapter(child: _InfoRow(business: business)),
+          // Quien está sentado en el local pide a SU mesa, no a domicilio: el
+          // QR de la mesa abre la misma carta del local, pero con la cuenta de
+          // la mesa y sin repartidor.
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppConstants.spacingM,
+                AppConstants.spacingS,
+                AppConstants.spacingM,
+                0,
+              ),
+              child: OutlinedButton.icon(
+                onPressed: () => context.push(AppRoutes.escanearMesa),
+                icon: const Icon(Icons.qr_code_scanner_rounded),
+                label: const Text('¿Estás en el local? Escanea el QR de tu mesa'),
+              ),
+            ),
+          ),
           if (!business.isOpen || business.openingHours != null)
             SliverToBoxAdapter(
               child: _StatusBanner(business: business),

@@ -6,6 +6,22 @@ import 'package:nexum_client/core/services/push_routing.dart';
 /// en cualquier parte, con el taxi esperándolo en la puerta.
 void main() {
   group('a dónde lleva cada notificación', () {
+    test('el pedido de la mesa abre SU pantalla con el código de la carta', () {
+      expect(
+        rutaDeNotificacion({
+          'type': 'mesa_ready',
+          'orderId': 'ord1',
+          'codigo': 'ABC123',
+        }),
+        '/carta/ABC123/pedido/ord1',
+      );
+      // Sin el código no se puede consultar: a la lista de pedidos del local.
+      expect(
+        rutaDeNotificacion({'type': 'mesa_preparing', 'orderId': 'ord1'}),
+        '/pedidos-en-el-local',
+      );
+    });
+
     test('el viaje en curso lleva al seguimiento, con su id', () {
       const id = 'trip_abc123';
       for (final t in ['trip_accepted', 'trip_arrived', 'trip_in_progress']) {

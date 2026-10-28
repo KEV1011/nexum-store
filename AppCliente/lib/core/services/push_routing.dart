@@ -66,6 +66,18 @@ String? rutaDeNotificacion(Map<String, dynamic> data) {
     case 'order_no_driver':
       return AppRoutes.home;
 
+    // El pedido hecho en la mesa con la app: a SU pantalla, con el código de
+    // la carta, que es lo que la ruta necesita para consultarlo.
+    case 'mesa_preparing':
+    case 'mesa_ready':
+      final codigo = data['codigo'];
+      return orderId is String &&
+              orderId.isNotEmpty &&
+              codigo is String &&
+              codigo.isNotEmpty
+          ? AppRoutes.mesaPedidoPath(codigo, orderId)
+          : AppRoutes.pedidosMesa;
+
     case 'errand_accepted':
     case 'errand_delivered':
     case 'errand_cancelled':

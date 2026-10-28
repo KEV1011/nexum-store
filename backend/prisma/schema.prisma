@@ -856,6 +856,11 @@ model Order {
   /// persona sale del equipo, el pedido sigue diciendo quién lo tomó.
   takenByStaffId   String?
   takenByName      String?
+  /// El cliente de la APP que pidió en la mesa, si pidió con sesión. Va aparte
+  /// de `userId` a propósito: `userId` nulo es lo que separa la mesa de los
+  /// domicilios en el portal y en «Mis pedidos», y llenarlo aquí metería un
+  /// plato del salón en la lista de entregas con su repartidor fantasma.
+  dinerUserId      String?
   pickupPhotoUrl   String?
   deliveryPhotoUrl String?
   /// La firma de quien recibe, tal como la dibujó en la pantalla.
@@ -921,6 +926,7 @@ model Order {
   events   OrderEvent[]
 
   @@index([userId])
+  @@index([dinerUserId])
   @@index([driverId])
   @@index([operatorId])
   @@index([status])

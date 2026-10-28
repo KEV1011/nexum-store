@@ -1,5 +1,6 @@
 import express, { Router } from 'express';
 import { clientAuthMiddleware } from '../middleware/client-auth.middleware';
+import { pedidosEnMesaDelCliente } from '../services/mesa.service';
 import { clientRequestRateLimit } from '../middleware/client-rate-limit.middleware';
 import { legalConsentEnforced, recordConsent, hasCurrentConsent } from '../services/legal.service';
 import { OtpRateLimitError } from '../services/otp.service';
@@ -654,6 +655,13 @@ router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req,
 
 router.get('/orders', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: await getClientOrders(req.clientId!) });
+});
+
+// GET /client/mesa/pedidos → lo que el cliente pidió en un local desde la app
+// (mesa o para llevar), con el código de la carta para seguirlo y calificarlo.
+// Aparte de /orders a propósito: allí viven los domicilios, con su repartidor.
+router.get('/mesa/pedidos', clientAuthMiddleware, async (req, res) => {
+  res.json({ success: true, data: await pedidosEnMesaDelCliente(req.clientId!) });
 });
 
 router.get('/orders/:id', clientAuthMiddleware, async (req, res) => {

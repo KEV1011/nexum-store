@@ -180,6 +180,12 @@ export interface PedirEnMesaDTO {
    * igual, solo que sin decir quién lo tomó.
    */
   personal?: unknown;
+  /**
+   * El cliente de la app que pide con su sesión. Lo pone la RUTA a partir del
+   * token, nunca el cuerpo: si viniera del cuerpo, cualquiera podría colgarle
+   * un pedido al historial de otra persona.
+   */
+  comensalId?: string | null;
   items: Array<{
     productId: string;
     quantity: number;
@@ -277,6 +283,7 @@ export async function crearPedidoEnMesa(
       orderRef: `MS-${Math.floor(1000 + Math.random() * 8000)}`,
       ...(tabId ? { tabId } : {}),
       ...(mesero ? { takenByStaffId: mesero.id, takenByName: mesero.name } : {}),
+      ...(dto.comensalId ? { dinerUserId: dto.comensalId } : {}),
       // Sin cuenta: el comensal está sentado en el local y no tiene por qué
       // instalar nada para almorzar. Es el punto de toda la función.
       userId: null,
@@ -357,6 +364,37 @@ export async function getPedidoEnMesa(
   return _aDTO(
     order, carta.business.name, order.lines, await historialDePedido(order.id),
   );
+}
+
+/** Un pedido en el local, visto desde el historial de la app. */
+export interface PedidoEnMesaDelClienteDTO extends PedidoEnMesaDTO {
+  /** El código de la carta: con él la app consulta el estado y califica. */
+  codigo: string;
+}
+
+/**
+ * Los pedidos que el cliente hizo en un local desde la app, con su sesión.
+ *
+ * Solo los suyos (`dinerUserId`) y solo de mesa o para llevar: un domicilio
+ * ya sale en «Mis pedidos». Los últimos 60 días, que es lo que alguien busca
+ * para volver a pedir lo mismo o calificar.
+ */
+export async function pedidosEnMesaDelCliente(
+  clientId: string,
+): Promise<PedidoEnMesaDelClienteDTO[]> {
+  const desde = new Date(Date.now() - 60 * 86_400_000);
+  const pedidos = await prisma.order.findMany({
+    where: { dinerUserId: clientId, createdAt: { gte: desde } },
+    include: { lines: true, business: { select: { name: true, menuCode: true } } },
+    orderBy: { createdAt: 'desc' },
+    take: 30,
+  });
+  return pedidos
+    .filter((o) => !seDespacha(o.mode) && o.business?.menuCode)
+    .map((o) => ({
+      ..._aDTO(o, o.business?.name ?? 'El local', o.lines),
+      codigo: o.business!.menuCode!,
+    }));
 }
 
 /**
