@@ -64,6 +64,12 @@ class AccountScreen extends ConsumerWidget {
                 onTap: () => context.push(AppRoutes.addresses),
               ),
               _SettingTile(
+                icon: Icons.table_restaurant_rounded,
+                title: 'Pedidos en el local',
+                subtitle: 'Lo que pediste en la mesa con el QR',
+                onTap: () => context.push(AppRoutes.pedidosMesa),
+              ),
+              _SettingTile(
                 icon: Icons.account_balance_wallet_rounded,
                 title: 'Métodos de pago',
                 subtitle: 'Efectivo o pago en línea (Wompi)',

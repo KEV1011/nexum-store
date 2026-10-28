@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nexum_client/features/mesa/presentation/screens/escanear_mesa_screen.dart';
+import 'package:nexum_client/features/mesa/presentation/screens/mesa_carta_screen.dart';
+import 'package:nexum_client/features/mesa/presentation/screens/mesa_pedido_screen.dart';
+import 'package:nexum_client/features/mesa/presentation/screens/mis_pedidos_mesa_screen.dart';
 import 'package:nexum_client/app/router/app_transitions.dart';
 import 'package:nexum_client/app/router/splash_screen.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
@@ -132,6 +136,19 @@ abstract final class AppRoutes {
         .toString();
   }
   static String orderPath(String id) => '/order/$id';
+
+  // Pedir en la mesa del local (la misma carta del QR).
+  static const String mesaCarta = '/carta/:codigo';
+  static const String mesaPedido = '/carta/:codigo/pedido/:id';
+  static const String escanearMesa = '/escanear-mesa';
+  static const String pedidosMesa = '/pedidos-en-el-local';
+
+  static String mesaCartaPath(String codigo, {String? mesa}) => Uri(
+        path: '/carta/$codigo',
+        queryParameters: mesa == null || mesa.isEmpty ? null : {'mesa': mesa},
+      ).toString();
+  static String mesaPedidoPath(String codigo, String id) =>
+      '/carta/$codigo/pedido/$id';
   static String transportTrackingPath(String id) => '/transport/tracking/$id';
   static String driverProfilePath(String id) => '/driver/$id';
 }
@@ -216,6 +233,51 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           );
         },
+      ),
+      // La mesa: llega también por el enlace del QR (App Links) cuando la app
+      // está instalada — por eso la ruta es la MISMA que la de la web.
+      GoRoute(
+        path: AppRoutes.mesaCarta,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: MesaCartaScreen(
+            codigo: state.pathParameters['codigo'] ?? '',
+            mesa: state.uri.queryParameters['mesa'],
+            paraLlevar: state.uri.queryParameters['llevar'] == '1',
+          ),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.mesaPedido,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: MesaPedidoScreen(
+            codigo: state.pathParameters['codigo'] ?? '',
+            pedidoId: state.pathParameters['id'] ?? '',
+          ),
+        ),
+      ),
+      // La hoja de imprimir los QR también vive bajo `/carta/` en el portal y
+      // el App Link la manda a la app: aquí no existe, así que se abre la
+      // carta en vez de una pantalla de error.
+      GoRoute(
+        path: '/carta/:codigo/imprimir',
+        redirect: (context, state) =>
+            AppRoutes.mesaCartaPath(state.pathParameters['codigo'] ?? ''),
+      ),
+      GoRoute(
+        path: AppRoutes.escanearMesa,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const EscanearMesaScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.pedidosMesa,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: const MisPedidosMesaScreen(),
+        ),
       ),
       GoRoute(
         path: AppRoutes.driverProfile,

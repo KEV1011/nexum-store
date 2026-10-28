@@ -13,6 +13,8 @@ import {
   getCartaPublica,
   getPedidoEnMesa,
 } from '../services/mesa.service';
+import { verifyClientToken } from '../services/client.service';
+import { clienteBorrado } from '../middleware/deleted-account';
 
 const router = Router();
 
@@ -34,6 +36,23 @@ const cartaLimiter = rateLimit({
     error: 'Muchos pedidos desde esta red en pocos minutos. Espera un momento o pide con el mesero.',
   },
 });
+
+/**
+ * El cliente de la app que manda su token, o null. Un token inválido NO
+ * rechaza el pedido: quien está sentado en la mesa no tiene por qué saber que
+ * su sesión venció, y la carta funciona sin cuenta.
+ */
+async function comensalDe(req: Request): Promise<string | null> {
+  const h = req.headers['authorization'];
+  if (typeof h !== 'string' || !h.startsWith('Bearer ')) return null;
+  try {
+    const { clientId } = verifyClientToken(h.slice(7));
+    if (await clienteBorrado(clientId)) return null;
+    return clientId;
+  } catch {
+    return null;
+  }
+}
 
 function fallo(res: Response, err: unknown, porDefecto: string): void {
   const message = err instanceof Error ? err.message : porDefecto;
@@ -61,6 +80,10 @@ router.post('/:codigo/pedido', cartaLimiter, async (req: Request, res: Response)
   }
   try {
     const pedido = await crearPedidoEnMesa(codigo, {
+      // Quien pide desde la APP con su sesión: el pedido entra a su
+      // historial y le llegan los avisos. Sin sesión (o con una vencida) pide
+      // igual, como el comensal del QR: la carta nunca exige cuenta.
+      comensalId: await comensalDe(req),
       mesa: body.mesa,
       // Sin reenviarlo, el pedido para llevar se rechazaba con «no
       // reconocimos la mesa»: el campo moría en la ruta. Es el mismo

@@ -61,7 +61,9 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>ZIPA usa tu ubicación para fijar el punto de recogida, mostrar conductores cercanos y seguir tu viaje en tiempo real.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>ZIPA usa la cámara para adjuntar fotos en pedidos y soporte.</string>
+	<string>ZIPA usa la cámara para leer el QR de tu mesa y para adjuntar fotos en pedidos y soporte.</string>
+	<key>FlutterDeepLinkingEnabled</key>
+	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>ZIPA accede a tus fotos para adjuntar imágenes en pedidos y soporte.</string>
 	<key>UIApplicationSceneManifest</key>

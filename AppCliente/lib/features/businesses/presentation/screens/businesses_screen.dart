@@ -141,6 +141,7 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
                   // está lo que la persona quiere mirar.
                   onCampana: () =>
                       ref.read(shellTabProvider.notifier).state = kTabPedidos,
+                  onEscanear: () => context.push(AppRoutes.escanearMesa),
                 ),
               ),
               SliverToBoxAdapter(
@@ -415,6 +416,7 @@ class _BarraDireccion extends StatelessWidget {
     required this.direccion,
     required this.onTap,
     required this.onCampana,
+    required this.onEscanear,
   });
 
   /// Null = todavía no eligió ninguna. No se inventa una: poner un texto de
@@ -423,6 +425,9 @@ class _BarraDireccion extends StatelessWidget {
   final String? direccion;
   final VoidCallback onTap;
   final VoidCallback onCampana;
+
+  /// «Escanear QR de la mesa»: quien está sentado en un local pide desde aquí.
+  final VoidCallback onEscanear;
 
   @override
   Widget build(BuildContext context) {
@@ -475,6 +480,11 @@ class _BarraDireccion extends StatelessWidget {
                 ),
               ),
             ),
+          ),
+          IconButton(
+            onPressed: onEscanear,
+            icon: const ZipaIcon(ZipaIconName.escanearQr),
+            tooltip: 'Escanear QR de la mesa',
           ),
           IconButton(
             onPressed: onCampana,

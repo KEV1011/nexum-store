@@ -31,6 +31,11 @@ class BusinessesRealDataSource {
     return _mapToEntity(res.data!['data'] as Map<String, dynamic>);
   }
 
+  /// El mismo lector para la carta de la mesa (`/carta/:código`), que trae el
+  /// local con el MISMO DTO: dos lectores acabarían leyendo distinto.
+  static BusinessEntity negocioDesdeJson(Map<String, dynamic> j) =>
+      _mapToEntity(j);
+
   static BusinessEntity _mapToEntity(Map<String, dynamic> j) {
     return BusinessEntity(
       id: j['id'] as String,

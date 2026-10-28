@@ -611,7 +611,7 @@ export async function acceptOrderByBusiness(
       // el cliente está esperando de pie.
       etaMinutes: seDespacha(existing.mode) ? prep + DELIVERY_TRAVEL_MIN : prep,
     },
-    include: { lines: true, business: { select: { name: true } } },
+    include: { lines: true, business: { select: { name: true, menuCode: true } } },
   });
   await registrarEventoPedido(orderId, 'PREPARING', {
     actor: 'negocio',
@@ -623,6 +623,15 @@ export async function acceptOrderByBusiness(
       title: 'Pedido confirmado',
       body: `${updated.business?.name ?? 'El negocio'} está preparando tu pedido (~${prep} min).`,
       data: { type: 'order_preparing', orderId },
+    });
+  }
+  // El comensal que pidió en la mesa desde la app: el mismo aviso, con las
+  // palabras del salón y el código de la carta para abrir su pedido.
+  if (updated.dinerUserId && !seDespacha(updated.mode)) {
+    void sendPushToClient(updated.dinerUserId, {
+      title: 'Pedido en la cocina',
+      body: `${updated.business?.name ?? 'El local'} está preparando tu pedido (~${prep} min).`,
+      data: { type: 'mesa_preparing', orderId, codigo: updated.business?.menuCode ?? '' },
     });
   }
 
@@ -703,7 +712,7 @@ export async function markOrderReadyByBusiness(
   const updated = await prisma.order.update({
     where: { id: orderId },
     data: { readyAt: new Date() },
-    include: { lines: true, business: { select: { name: true } } },
+    include: { lines: true, business: { select: { name: true, menuCode: true } } },
   });
 
   if (updated.driverId) {
@@ -738,6 +747,17 @@ export async function markOrderReadyByBusiness(
       title: 'Pedido listo',
       body: `Tu pedido en ${updated.business?.name ?? 'el negocio'} está listo y saldrá pronto.`,
       data: { type: 'order_ready', orderId },
+    });
+  }
+  // En la mesa «saldrá pronto» sería mentira: no sale a ningún lado, se lo
+  // llevan a la mesa (o se recoge en el mostrador si es para llevar).
+  if (updated.dinerUserId && !seDespacha(updated.mode)) {
+    void sendPushToClient(updated.dinerUserId, {
+      title: 'Pedido listo',
+      body: updated.mode === 'TAKEAWAY'
+        ? `Tu pedido en ${updated.business?.name ?? 'el local'} está listo: recógelo en el mostrador.`
+        : `Tu pedido en ${updated.business?.name ?? 'el local'} está listo: ya te lo llevan a la mesa.`,
+      data: { type: 'mesa_ready', orderId, codigo: updated.business?.menuCode ?? '' },
     });
   }
 

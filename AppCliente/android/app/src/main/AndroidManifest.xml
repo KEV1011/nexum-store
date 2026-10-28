@@ -31,6 +31,12 @@
          pero también debe declararse en el manifest. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
+    <!-- Cámara: «Escanear QR de la mesa» (mobile_scanner). Se pide al abrir
+         el escáner, no al instalar. `required="false"`: un teléfono sin cámara
+         sigue pudiendo instalar la app desde Play y pedir a domicilio. -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-feature android:name="android.hardware.camera" android:required="false"/>
+
     <application
         android:label="ZIPA"
         android:name="${applicationName}"
@@ -66,6 +72,24 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- El QR de la mesa abre la APP si está instalada (Android App
+                 Links). Solo `/carta/`: el resto del portal sigue siendo web.
+                 Android lo verifica contra /.well-known/assetlinks.json del
+                 portal; sin la huella publicada (ANDROID_APP_LINKS_SHA256)
+                 la verificación falla y el QR abre la web como siempre.
+                 Los hosts tienen que coincidir con `kDominiosCarta`. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="https"/>
+                <data android:host="nexum-store.vercel.app"/>
+                <data android:host="nexum-store.onrender.com"/>
+                <data android:pathPrefix="/carta/"/>
+            </intent-filter>
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="true"/>
         </activity>
         <!-- Vuelta de «Entrar con Apple» en Android. Aquí no hay Apple nativo:
              la app abre la página de Apple en una pestaña, Apple publica el

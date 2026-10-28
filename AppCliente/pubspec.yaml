@@ -34,6 +34,10 @@ dependencies:
   image_picker: ^1.1.2
   intl: ^0.20.0
   latlong2: ^0.9.1
+  # «Escanear QR de la mesa». Licencia BSD-3-Clause. En Android trae ML Kit
+  # empaquetado (lee sin Google Play Services y sin descargar el modelo la
+  # primera vez, que es justo cuando el comensal está sentado esperando).
+  mobile_scanner: ^7.0.0
   sentry_flutter: ^9.26.0
   shared_preferences: ^2.3.2
   url_launcher: ^6.3.0
