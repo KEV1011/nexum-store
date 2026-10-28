@@ -62,6 +62,8 @@ export interface PedidoCocina {
   readyAt: Date | null;
   /** Los minutos que el negocio prometió. Null = no declaró ninguno. */
   etaMinutes: number | null;
+  /** El mesero que lo tomó, si lo tomó alguien del equipo: a quién llamar. */
+  tomadoPor?: string | null;
   lineas: Array<{
     productName: string;
     quantity: number;

@@ -52,11 +52,17 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
   // `?llevar=1` en el QR del MOSTRADOR: el cliente pide y se lo lleva. Es un
   // código distinto del de las mesas, así que el local decide dónde lo pega.
   const [paraLlevar, setParaLlevar] = useState(false)
+  // El MESERO que toma el pedido desde su portal: su enlace viaja en el `#`
+  // (nunca llega a ningún servidor ni a un «compartir») y se manda con el
+  // pedido para que diga quién lo tomó. En ese modo la carta no recuerda el
+  // pedido en el teléfono: el mesero toma la mesa 4 después de la 3.
+  const [personal, setPersonal] = useState<string | null>(null)
 
   useEffect(() => {
     const p = new URLSearchParams(window.location.search)
     setMesa(p.get('mesa'))
     setParaLlevar(p.get('llevar') === '1')
+    setPersonal(personalDelEnlace())
   }, [])
 
   const cargar = useCallback(async () => {
@@ -78,6 +84,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
   // celular— deja al comensal sin su pedido y sin forma de encontrarlo: no hay
   // cuenta, y el id solo lo tenía la pestaña que se cerró.
   useEffect(() => {
+    if (personalDelEnlace()) return
     const guardado = pedidoRecordado(codigo)
     if (!guardado) return
     void llamar<PedidoEnMesa>(`/carta/${encodeURIComponent(codigo)}/pedido/${guardado}`)
@@ -226,6 +233,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
         body: {
           mesa,
           ...(paraLlevar ? { paraLlevar: true } : {}),
+          ...(personal ? { personal } : {}),
           items: carrito.map((l) => ({
             productId: l.productId,
             quantity: l.cantidad,
@@ -235,7 +243,7 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
         },
       })
       setPedido(creado)
-      recordarPedido(codigo, creado.id)
+      if (!personal) recordarPedido(codigo, creado.id)
       setCarrito([])
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'No pudimos enviar tu pedido.')
@@ -320,6 +328,15 @@ export default function CartaPage({ params }: { params: Promise<{ codigo: string
             <p className="mt-1 text-sm font-medium opacity-80">
               Mesa {pedido.tableLabel} · #{pedido.orderRef}
             </p>
+            {personal && (
+              <a
+                href={`/negocio/${encodeURIComponent(personal)}/cuentas`}
+                className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[currentColor]/15
+                           px-4 py-2 text-sm font-bold ring-1 ring-inset ring-[currentColor]/25"
+              >
+                Volver a las mesas
+              </a>
+            )}
             {pedido.prepMinutes ? (
               <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[currentColor]/15
                             px-3 py-1.5 text-xs font-bold ring-1 ring-inset ring-[currentColor]/25">
@@ -1132,4 +1149,11 @@ function HojaOpciones({ producto, onCerrar, onAgregar }: {
       </div>
     </div>
   )
+}
+
+/** El enlace del mesero que viaja en el `#personal=…` de la carta, o null. */
+function personalDelEnlace(): string | null {
+  if (typeof window === 'undefined') return null
+  const v = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('personal')
+  return v && /^p_[A-Za-z0-9_-]{8,60}$/.test(v) ? v : null
 }

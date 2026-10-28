@@ -5,6 +5,9 @@ import { ZipaLogo, ZipaLoading } from '../../ZipaLogo'
 import { useOrderAlert } from './useOrderAlert'
 import { PortalTabs } from './PortalTabs'
 import { InstalarApp } from './InstalarApp'
+import { useAcceso } from './useAcceso'
+import { PANTALLAS, pantallaDeInicio, puedeVer } from '../acceso'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Package,
@@ -572,6 +575,18 @@ export default function PortalDashboard({
   params: Promise<{ token: string }>
 }) {
   const { token } = use(params)
+  const router = useRouter()
+  // Quién abrió el enlace. La cocina y el mesero no tienen esta pantalla (los
+  // pedidos del día son de la caja y del dueño): se les lleva a la suya en
+  // vez de enseñarles un «no tienes permiso».
+  const { acceso, cargando: cargandoAcceso } = useAcceso(token)
+  const rol = acceso?.rol ?? null
+  const otraPantalla = rol !== null && !puedeVer(rol, 'pedidos')
+  useEffect(() => {
+    if (rol && otraPantalla) {
+      router.replace(`/negocio/${token}${PANTALLAS[pantallaDeInicio(rol)].ruta}`)
+    }
+  }, [rol, otraPantalla, router, token])
 
   const [data, setData] = useState<ApiResponse | null>(null)
   const [clientOrders, setClientOrders] = useState<ClientOrder[]>([])
@@ -704,6 +719,9 @@ export default function PortalDashboard({
   }, [token, avisarPedido])
 
   useEffect(() => {
+    // Hasta saber quién es no se pide nada: a la cocina, este pedido le
+    // respondería «sin permiso» justo antes de llevarla a su pantalla.
+    if (cargandoAcceso || otraPantalla) return
     fetchOrders()
     connectWs()
     const pollInterval = setInterval(() => fetchOrders(), 60_000)
@@ -713,7 +731,7 @@ export default function PortalDashboard({
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
       wsRef.current?.close()
     }
-  }, [fetchOrders, connectWs])
+  }, [fetchOrders, connectWs, cargandoAcceso, otraPantalla])
 
   // ─── Derived ────────────────────────────────────────────────────────────────
 
@@ -723,7 +741,7 @@ export default function PortalDashboard({
 
   // La marca dibujándose mientras llega el pedido del día: la misma entrada
   // que el splash de las apps, para que ZIPA se sienta igual en todas partes.
-  if (loading) return <ZipaLoading label="Abriendo tu portal" />
+  if (loading || cargandoAcceso || otraPantalla) return <ZipaLoading label="Abriendo tu portal" />
 
   if (error) {
     return (
@@ -774,7 +792,11 @@ export default function PortalDashboard({
             </div>
             <div>
               <p className="font-bold text-slate-900 text-sm leading-tight">{businessName}</p>
-              <p className="text-xs text-slate-400">Portal de pedidos</p>
+              <p className="text-xs text-slate-400">
+                {acceso && acceso.rol !== 'DUENO'
+                  ? `${acceso.rolNombre}${acceso.nombre ? ` · ${acceso.nombre}` : ''}`
+                  : 'Portal de pedidos'}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -812,42 +834,42 @@ export default function PortalDashboard({
                 las dos son pantallas de SALA, no de escritorio. */}
             {/* La caja del turno. Va con Mesas y Cocina: las tres son
                 pantallas de SALA que se abren a diario. */}
-            <Link href={`/negocio/${token}/caja`}
+            {puedeVer(rol, 'caja') && <Link href={`/negocio/${token}/caja`}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700
                          bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-200 transition-colors">
               <Wallet className="w-3.5 h-3.5" />
               Caja
-            </Link>
-            <Link href={`/negocio/${token}/cuentas`}
+            </Link>}
+            {puedeVer(rol, 'cuentas') && <Link href={`/negocio/${token}/cuentas`}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700
                          bg-slate-100 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-200 transition-colors">
               <Receipt className="w-3.5 h-3.5" />
               Mesas
-            </Link>
-            <Link href={`/negocio/${token}/cocina`}
+            </Link>}
+            {puedeVer(rol, 'cocina') && <Link href={`/negocio/${token}/cocina`}
               className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800
                          bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 hover:bg-amber-100 transition-colors">
               <ChefHat className="w-3.5 h-3.5" />
               Cocina
-            </Link>
-            <Link href={`/negocio/${token}/catalogo`}
+            </Link>}
+            {puedeVer(rol, 'catalogo') && <Link href={`/negocio/${token}/catalogo`}
               className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-700
                          bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5 hover:bg-emerald-100 transition-colors">
               <UtensilsCrossed className="w-3.5 h-3.5" />
               Catálogo
-            </Link>
-            <Link href={`/negocio/${token}/ventas`}
+            </Link>}
+            {puedeVer(rol, 'ventas') && <Link href={`/negocio/${token}/ventas`}
               className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600
                          bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-100 transition-colors">
               <BarChart3 className="w-3.5 h-3.5" />
               Ventas
-            </Link>
-            <Link href={`/negocio/${token}/ajustes`}
+            </Link>}
+            {puedeVer(rol, 'ajustes') && <Link href={`/negocio/${token}/ajustes`}
               className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600
                          bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 hover:bg-slate-100 transition-colors">
               <Settings className="w-3.5 h-3.5" />
               Ajustes
-            </Link>
+            </Link>}
             <button onClick={() => fetchOrders(true)} disabled={refreshing}
               aria-label="Actualizar pedidos"
               className={BOTON.icono}>
