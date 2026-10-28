@@ -8,6 +8,9 @@ import { LocationPicker } from './LocationPicker'
 import { DestinosEnvio, type Destino } from './DestinosEnvio'
 import { MesasManager } from './MesasManager'
 import { ClaveNegocio } from './ClaveNegocio'
+import { EquipoManager } from './EquipoManager'
+import { useAcceso } from '../useAcceso'
+import { puede } from '../../acceso'
 import { InstalarApp } from '../InstalarApp'
 import { CONTENEDOR } from '../../../ui'
 import { HorarioEditor, type Franja } from './HorarioEditor'
@@ -91,6 +94,10 @@ const INPUT =
 
 export default function AjustesPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
+  // El encargado entra a Ajustes, pero la clave, el equipo y los giros son
+  // del dueño: no se le enseñan (el servidor se los negaría igual).
+  const { acceso } = useAcceso(token)
+  const rol = acceso?.rol ?? null
 
   const [settings, setSettings] = useState<Settings | null>(null)
   const [stats, setStats] = useState<Stats | null>(null)
@@ -521,7 +528,8 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
               />
               <DestinosEnvio token={token} citySlug={citySlug} inicial={shipsTo} />
               <MesasManager token={token} />
-              <ClaveNegocio token={token} />
+              {puede(rol, 'verClave') && <ClaveNegocio token={token} />}
+              {puede(rol, 'verEquipo') && <EquipoManager token={token} />}
               <InstalarApp token={token} />
               <HorarioEditor franjas={settings.hours} onChange={(hours) => set({ hours })} />
               <button
@@ -553,7 +561,7 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
             {/* Lo que ZIPA le debe por los pedidos que cobramos nosotros.
                 Va en Ajustes porque es donde el dueño mira lo suyo, y
                 debajo del resto porque se consulta, no se configura. */}
-            <GirosNegocio token={token} backendUrl={BACKEND_URL} />
+            {puede(rol, 'verGiros') && <GirosNegocio token={token} backendUrl={BACKEND_URL} />}
           </>
         ) : null}
       </div>

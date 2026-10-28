@@ -18,6 +18,9 @@ import {
 import { BACKEND_URL, BACKEND_WS } from '../../../backend'
 import { formatCOP } from '../../../moneda'
 import { BOTON, TARJETA } from '../../../ui'
+import { puede, puedeVer } from '../../acceso'
+import { useAcceso } from '../useAcceso'
+import { TomarPedido } from './TomarPedido'
 
 interface Cuenta {
   id: string
@@ -40,6 +43,10 @@ const hora = (iso: string) =>
 
 export default function CuentasPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = use(params)
+  // El mesero ve las mesas y toma pedidos, pero cobrar es de la caja: el
+  // botón no se le enseña (el servidor se lo negaría igual).
+  const { acceso } = useAcceso(token)
+  const rol = acceso?.rol ?? null
   const [cuentas, setCuentas] = useState<Cuenta[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cerrando, setCerrando] = useState<string | null>(null)
@@ -187,9 +194,11 @@ export default function CuentasPage({ params }: { params: Promise<{ token: strin
                   : `${cuentas.length} ${cuentas.length === 1 ? 'mesa' : 'mesas'} con cuenta abierta`}
             </p>
           </div>
-          <a href={`/negocio/${token}`} className={`${BOTON.secundario} ml-auto`}>
-            Volver al portal
-          </a>
+          {puedeVer(rol, 'pedidos') && (
+            <a href={`/negocio/${token}`} className={`${BOTON.secundario} ml-auto`}>
+              Volver al portal
+            </a>
+          )}
         </div>
 
         {cuentas && cuentas.length > 0 && (
@@ -203,6 +212,8 @@ export default function CuentasPage({ params }: { params: Promise<{ token: strin
           </div>
         )}
       </header>
+
+      {acceso && puede(rol, 'tomarPedido') && <TomarPedido token={token} rol={rol} />}
 
       {error && (
         <p className="mb-3 flex items-center gap-2 rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
@@ -309,16 +320,18 @@ export default function CuentasPage({ params }: { params: Promise<{ token: strin
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void cerrar(c)}
-                disabled={cerrando === c.id}
-                className={`${BOTON.principal} flex-1`}
-              >
-                {cerrando === c.id
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <><Check className="h-4 w-4" /> Cobrar</>}
-              </button>
+              {puede(rol, 'cerrarCuenta') && (
+                <button
+                  type="button"
+                  onClick={() => void cerrar(c)}
+                  disabled={cerrando === c.id}
+                  className={`${BOTON.principal} flex-1`}
+                >
+                  {cerrando === c.id
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <><Check className="h-4 w-4" /> Cobrar</>}
+                </button>
+              )}
               <a
                 href={`/negocio/${token}/cuenta/${c.id}`}
                 className={BOTON.secundario}

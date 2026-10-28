@@ -21,6 +21,7 @@ import { normalizeColombianPhone } from './auth.service';
 import { codigoEsLlaveMaestra } from './otp.service';
 import { ClaveError, comprobarClave, emitirPaseClave, leerPaseClave } from './clave-personal.service';
 import { ubicarComercio } from './ubicacion-comercio.service';
+import { resolverAccesoPortal } from './personal.service';
 import { plazaDeCoordenadas } from './municipality.service';
 import {
   saneaDestinos, destinosDesdeBD, type DestinoEnvio,
@@ -254,8 +255,13 @@ const service = {
 
   // ── Auth via access token ─────────────────────────────────────────────────
 
+  /**
+   * El negocio de un enlace de portal: el del dueño O el de una persona de su
+   * equipo. Que el rol pueda hacer lo que pide lo decide antes el guardia de
+   * las rutas (`permisos-portal`); aquí solo se resuelve de qué negocio es.
+   */
   async getBusinessByToken(token: string): Promise<Business> {
-    const biz = await prisma.business.findUnique({ where: { token } });
+    const biz = (await resolverAccesoPortal(token))?.business ?? null;
     if (!biz) throw new Error(`Business not found for token: ${token}`);
     if (!biz.isOpen) throw new Error('Business account is not active');
     return _dbToBusinessInterface(biz);

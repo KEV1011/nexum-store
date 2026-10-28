@@ -25,6 +25,8 @@ import {
 
 import { BACKEND_URL, BACKEND_WS } from '../../../backend'
 import { useOrderAlert } from '../useOrderAlert'
+import { puedeVer } from '../../acceso'
+import { useAcceso } from '../useAcceso'
 
 interface LineaCocina {
   productName: string
@@ -42,6 +44,8 @@ interface PedidoCocina {
   acceptedAt: string | null
   readyAt: string | null
   etaMinutes: number | null
+  /** El mesero que lo tomó, si fue alguien del equipo: a quién llamar. */
+  tomadoPor?: string | null
   lineas: LineaCocina[]
 }
 
@@ -87,6 +91,7 @@ export default function CocinaPage({ params }: { params: Promise<{ token: string
   // for token: undefined» con el que salió a producción. Las otras páginas
   // del portal ya lo hacían así.
   const { token } = use(params)
+  const { acceso } = useAcceso(token)
   const [pedidos, setPedidos] = useState<PedidoCocina[] | null>(null)
   const [platos, setPlatos] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -301,12 +306,15 @@ export default function CocinaPage({ params }: { params: Promise<{ token: string
           <BellRing className="h-4 w-4" />
           {esPase ? 'Ver como cocina' : 'Abrir el pase'}
         </a>
-        <a
-          href={`/negocio/${token}`}
-          className="rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-white/5"
-        >
-          Volver al portal
-        </a>
+        {/* La cocina no tiene otro portal al que volver. */}
+        {puedeVer(acceso?.rol ?? null, 'pedidos') && (
+          <a
+            href={`/negocio/${token}`}
+            className="rounded-lg border border-white/15 px-3 py-2 text-sm font-semibold text-slate-300 hover:bg-white/5"
+          >
+            Volver al portal
+          </a>
+        )}
       </header>
 
       {error && (
@@ -424,6 +432,9 @@ function Tarjeta({
           {destino(pedido)}
         </span>
         <span className="text-xs font-semibold text-slate-400">{pedido.orderRef}</span>
+        {pedido.tomadoPor && (
+          <span className="text-xs font-semibold text-slate-300">· {pedido.tomadoPor}</span>
+        )}
         <span
           className={`ml-auto inline-flex items-center gap-1.5 text-sm font-bold ${
             tarde ? 'text-red-300' : 'text-slate-300'

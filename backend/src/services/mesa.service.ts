@@ -20,6 +20,7 @@
 // —la lección que ya costó el saldo de los conductores en efectivo—. Este canal
 // existe para que el local nos busque; el ingreso son sus domicilios.
 
+import { personaDelNegocio } from './personal.service';
 import { prisma } from '../lib/prisma';
 import type { BusinessPublicDTO, ClientOrderSummaryDTO } from '../types';
 import { codigoDeCarta, mesaDelCatalogo, saneaMesas } from '../lib/mesas';
@@ -173,6 +174,12 @@ export interface PedirEnMesaDTO {
    * rondas y NO se le busca repartidor: se paga en el mostrador y se va.
    */
   paraLlevar?: unknown;
+  /**
+   * El enlace del mesero que tomó el pedido, si lo tomó él desde su portal.
+   * Si no es de una persona activa de ESTE negocio se ignora: el pedido sale
+   * igual, solo que sin decir quién lo tomó.
+   */
+  personal?: unknown;
   items: Array<{
     productId: string;
     quantity: number;
@@ -263,10 +270,13 @@ export async function crearPedidoEnMesa(
     }
   }
 
+  const mesero = await personaDelNegocio(biz.id, dto.personal);
+
   const order = await prisma.order.create({
     data: {
       orderRef: `MS-${Math.floor(1000 + Math.random() * 8000)}`,
       ...(tabId ? { tabId } : {}),
+      ...(mesero ? { takenByStaffId: mesero.id, takenByName: mesero.name } : {}),
       // Sin cuenta: el comensal está sentado en el local y no tiene por qué
       // instalar nada para almorzar. Es el punto de toda la función.
       userId: null,

@@ -106,6 +106,8 @@ import {
   TripChatError,
 } from '../services/trip-chat.service';
 import { initBus, publishDelivery, BusTarget } from '../lib/bus';
+import { recibeAviso, type RolPortal } from '../lib/permisos-portal';
+import { registerCerrarSesionPersonal, resolverAccesoPortal } from '../services/personal.service';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -124,7 +126,28 @@ const clientIntercitySubs = new Map<WebSocket, Map<string, () => void>>();
 // Shared pooled rides — both drivers and clients may subscribe to a trip.
 const pooledSubs = new Map<WebSocket, Map<string, () => void>>();
 
-const businessSockets = new Map<string, WebSocket>();
+/**
+ * Las pantallas abiertas de cada negocio. Antes era UNA por negocio y cada
+ * conexión nueva cerraba la anterior: con el equipo, la tablet de la cocina
+ * habría echado al dueño y el celular del mesero a la cocina. Ahora conviven,
+ * cada una con su rol (`recibeAviso` decide qué le llega a cuál), y solo se
+ * reemplaza la de la MISMA persona (la misma pestaña que se reconecta).
+ */
+interface PantallaNegocio {
+  ws: WebSocket;
+  rol: RolPortal;
+  /** 'dueno' o el id de la persona del equipo. */
+  quien: string;
+}
+const businessSockets = new Map<string, Set<PantallaNegocio>>();
+
+function _pantallasDe(businessId: string, tipo: 'pedido' | 'sin_repartidor' | 'giro'): WebSocket[] {
+  const out: WebSocket[] = [];
+  for (const p of businessSockets.get(businessId) ?? []) {
+    if (recibeAviso(p.rol, tipo)) out.push(p.ws);
+  }
+  return out;
+}
 const businessSubscriptions = new Map<WebSocket, Array<() => void>>();
 
 // Per-driver active trip (supports multi-driver matching; driverActiveTripId is the
@@ -514,12 +537,24 @@ async function handleSubscribePooled(ws: WebSocket, tripId: string): Promise<voi
 
 async function handleBusinessAuth(ws: WebSocket, token: string): Promise<void> {
   try {
+    const acceso = await resolverAccesoPortal(token);
+    if (!acceso) throw new Error('sin acceso');
+    // El mismo chequeo de siempre (negocio desactivado = fuera).
     const business = await getBusinessService().getBusinessByToken(token);
-    const old = businessSockets.get(business.id);
-    if (old && old !== ws && old.readyState === WebSocket.OPEN) old.close();
-    businessSockets.set(business.id, ws);
+    const quien = acceso.staff?.id ?? 'dueno';
+    const pantallas = businessSockets.get(business.id) ?? new Set<PantallaNegocio>();
+    for (const p of [...pantallas]) {
+      if (p.quien === quien && p.ws !== ws) {
+        pantallas.delete(p);
+        if (p.ws.readyState === WebSocket.OPEN) p.ws.close();
+      }
+    }
+    pantallas.add({ ws, rol: acceso.rol, quien });
+    businessSockets.set(business.id, pantallas);
     marcarIdentificado(ws);
-    sendTo(ws, { type: 'business_auth_ok', businessId: business.id, businessName: business.name });
+    sendTo(ws, {
+      type: 'business_auth_ok', businessId: business.id, businessName: business.name, rol: acceso.rol,
+    });
 
     // Este bus trae AHORA dos cosas: el pedido recién entrado y cada cambio
     // de estado del que antes el negocio no se enteraba (por eso la cocina
@@ -593,8 +628,7 @@ function deliverLocally(target: BusTarget, payload: Record<string, unknown>): vo
     const conn = driverConnections.get(target.id);
     if (conn) sendTo(conn.ws, payload);
   } else {
-    const ws = businessSockets.get(target.id);
-    if (ws) sendTo(ws, payload);
+    for (const ws of _pantallasDe(target.id, 'pedido')) sendTo(ws, payload);
   }
 }
 
@@ -1480,8 +1514,9 @@ function onClose(ws: WebSocket): void {
   // Business cleanup
   const bizUnsubs = businessSubscriptions.get(ws);
   if (bizUnsubs) { for (const fn of bizUnsubs) fn(); businessSubscriptions.delete(ws); }
-  for (const [bid, sock] of businessSockets.entries()) {
-    if (sock === ws) { businessSockets.delete(bid); break; }
+  for (const [bid, pantallas] of businessSockets.entries()) {
+    for (const p of pantallas) if (p.ws === ws) pantallas.delete(p);
+    if (pantallas.size === 0) businessSockets.delete(bid);
   }
 }
 
@@ -1515,8 +1550,9 @@ export function setupWebSocket(wss: WebSocketServer): void {
   // debe decidir si la lleva él o cancela. Callarse era lo que lo dejaba
   // esperando indefinidamente.
   registerNotifyBusinessNoDriver((businessId, orderId, orderRef) => {
-    const sock = businessSockets.get(businessId);
-    if (sock) sendTo(sock, { type: 'order_no_driver', orderId, orderRef });
+    for (const sock of _pantallasDe(businessId, 'sin_repartidor')) {
+      sendTo(sock, { type: 'order_no_driver', orderId, orderRef });
+    }
   });
   registerIntercitySendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
   // Kill-switch documental: aviso en vivo al conductor bloqueado/reactivado.
@@ -1532,10 +1568,22 @@ export function setupWebSocket(wss: WebSocketServer): void {
   // Giro a un aliado: «ya te pagamos», con la referencia de la transferencia.
   // Es la mitad que vuelve aceptable que la plataforma recaude su plata: un
   // giro silencioso obliga al dueño a revisar su banco a ciegas.
+  // Revocar a alguien del equipo le cierra el portal abierto, no solo el
+  // siguiente: la tablet de la cocina se queda conectada horas.
+  registerCerrarSesionPersonal((businessId, staffId) => {
+    const pantallas = businessSockets.get(businessId);
+    if (!pantallas) return;
+    for (const p of [...pantallas]) {
+      if (p.quien !== staffId) continue;
+      pantallas.delete(p);
+      sendTo(p.ws, { type: 'business_auth_error', message: 'Tu acceso a este negocio fue retirado.' });
+      if (p.ws.readyState === WebSocket.OPEN) p.ws.close();
+    }
+  });
   registerAvisoDeGiro((destino, msg) => {
     if (destino.tipo === 'negocio') {
-      const sock = businessSockets.get(destino.id);
-      if (sock) sendTo(sock, msg);
+      // Solo el dueño: es su plata, no la del equipo.
+      for (const sock of _pantallasDe(destino.id, 'giro')) sendTo(sock, msg);
       return;
     }
     if (destino.tipo === 'empresa') {

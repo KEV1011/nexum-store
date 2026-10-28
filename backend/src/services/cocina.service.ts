@@ -39,6 +39,7 @@ export async function pedidosEnCocina(businessId: string): Promise<{
     select: {
       id: true, orderRef: true, status: true, mode: true,
       tableLabel: true, acceptedAt: true, readyAt: true, etaMinutes: true,
+      takenByName: true,
       lines: {
         select: { productName: true, quantity: true, optionsSummary: true, notes: true },
       },
@@ -54,6 +55,7 @@ export async function pedidosEnCocina(businessId: string): Promise<{
     acceptedAt: o.acceptedAt,
     readyAt: o.readyAt,
     etaMinutes: o.etaMinutes,
+    tomadoPor: o.takenByName,
     lineas: o.lines,
   }));
 

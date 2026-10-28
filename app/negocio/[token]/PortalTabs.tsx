@@ -2,6 +2,8 @@
 
 import Link from 'next/link'
 import { ShoppingBag, UtensilsCrossed, BarChart3, Settings } from 'lucide-react'
+import { puedeVer } from '../acceso'
+import { useAcceso } from './useAcceso'
 
 /**
  * Navegación del portal del negocio en teléfono.
@@ -25,13 +27,18 @@ const TABS = [
 export type PortalTab = (typeof TABS)[number]['key']
 
 export function PortalTabs({ token, activa }: { token: string; activa: PortalTab }) {
+  // Solo las pestañas que el rol puede abrir: una pestaña que responde «sin
+  // permiso» es un botón roto.
+  const { acceso } = useAcceso(token)
+  const visibles = TABS.filter((t) => puedeVer(acceso?.rol ?? null, t.key))
+  if (visibles.length < 2) return null
   return (
     // En el teléfono lo que debe quedar fijo al desplazar es la navegación, no
     // la marca: por eso el header pasa a `sm:sticky` y estas pestañas toman el
     // `top-0`. Así se evita además depender de la altura exacta del header.
     <nav className="sm:hidden bg-white border-b border-slate-200 sticky top-0 z-20">
       <div className="flex">
-        {TABS.map((t) => {
+        {visibles.map((t) => {
           const esActiva = t.key === activa
           return (
             <Link

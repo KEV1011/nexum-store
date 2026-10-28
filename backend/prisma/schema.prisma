@@ -541,9 +541,43 @@ model Business {
   payouts        Payout[]
   partnerCredits PartnerCredit[]
   cartaReportes  CartaReporte[]
+  staff          BusinessStaff[]
 
   @@index([category])
   @@map("businesses")
+}
+
+/// El rol de una persona del equipo del negocio. El DUEÑO no está aquí: es
+/// quien tiene el enlace del negocio (`Business.token`) y puede todo.
+enum StaffRole {
+  ENCARGADO
+  CAJA
+  MESERO
+  COCINA
+}
+
+/// Una persona del equipo con su propio acceso al portal.
+///
+/// Antes había UN enlace por negocio, el del dueño: el mesero que lo usaba
+/// entraba con todo el poder —ventas, giros, ajustes, la clave—. Cada persona
+/// tiene ahora su enlace, con lo que su rol puede hacer y nada más; quien
+/// decide es el servidor (`lib/permisos-portal.ts`), no lo que oculta el
+/// portal. Revocar es apagar `active`: el enlace deja de abrir al instante.
+model BusinessStaff {
+  id         String    @id @default(cuid())
+  businessId String
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  role       StaffRole
+  /// Su llave del portal. Aleatoria y larga: es lo único que la protege.
+  token      String    @unique
+  active     Boolean   @default(true)
+  lastSeenAt DateTime?
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([businessId])
+  @@map("business_staff")
 }
 
 /// Una carta que el dueño marcó como «se leyó mal».
@@ -818,6 +852,10 @@ model Order {
   // paralelo a los estados de entrega (el conductor puede ir en camino mientras
   // se cocina), por eso es timestamp y no un estado del enum.
   readyAt          DateTime?
+  /// Quién del equipo tomó el pedido en la mesa. El nombre va copiado: si la
+  /// persona sale del equipo, el pedido sigue diciendo quién lo tomó.
+  takenByStaffId   String?
+  takenByName      String?
   pickupPhotoUrl   String?
   deliveryPhotoUrl String?
   /// La firma de quien recibe, tal como la dibujó en la pantalla.

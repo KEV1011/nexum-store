@@ -1,4 +1,12 @@
 import { Router, Request, Response } from 'express';
+import { mensajeSinPermiso, NOMBRE_DEL_ROL, rutaPermitida } from '../lib/permisos-portal';
+import {
+  crearPersonal,
+  listarPersonal,
+  resolverAccesoPortal,
+  revocarPersonal,
+  type AccesoPortal,
+} from '../services/personal.service';
 import { csvTemplate, parseProductCsv } from '../lib/product-csv';
 import {
   listOptionGroups,
@@ -229,6 +237,112 @@ function _errorDeClave(res: Response, err: unknown): void {
   }
   res.status(500).json({ success: false, error: 'No se pudo recuperar el acceso.' });
 }
+
+// ─── El guardia del portal: quién es el enlace y qué puede su rol ───────────
+//
+// Todo lo que sigue es `/:token/...`. Aquí se resuelve si el enlace es del
+// dueño o de alguien del equipo y, si es del equipo, si su rol abre ESTA
+// ruta (`lib/permisos-portal.ts`, que falla cerrado: una ruta nueva nace solo
+// del dueño). Un enlace que no es de nadie pasa de largo y cada ruta responde
+// su 404 de siempre: el portal ya sabe qué hacer con eso.
+//
+// Va DESPUÉS de las rutas públicas (`/register`, `/recover/...`): Express
+// las atiende antes y nunca llegan aquí.
+router.use('/:token', async (req: Request, res: Response, next) => {
+  const token = req.params['token'] ?? '';
+  let acceso: AccesoPortal | null = null;
+  try {
+    acceso = await resolverAccesoPortal(token);
+  } catch {
+    // Sin base de datos la ruta fallará igual, con su propio mensaje.
+  }
+  if (!acceso) return next();
+  res.locals['acceso'] = acceso;
+  if (!rutaPermitida(acceso.rol, req.method, req.path)) {
+    res.status(403).json({
+      success: false,
+      code: 'sin_permiso',
+      error: mensajeSinPermiso(acceso.rol),
+    });
+    return;
+  }
+  next();
+});
+
+/** Quién abrió esta petición (lo dejó el guardia). Null si nadie conocido. */
+function _acceso(res: Response): AccesoPortal | null {
+  return (res.locals['acceso'] as AccesoPortal | undefined) ?? null;
+}
+
+// GET /business/:token/acceso → { rol, rolNombre, nombre, negocio }
+//
+// Lo primero que pide el portal: con esto decide qué pantallas enseña. Es
+// solo comodidad — lo que el rol NO puede hacer lo niega el guardia igual.
+router.get('/:token/acceso', (_req: Request, res: Response): void => {
+  const a = _acceso(res);
+  if (!a) {
+    res.status(404).json({ success: false, error: 'Este enlace no es de ningún negocio.' });
+    return;
+  }
+  res.json({
+    success: true,
+    data: {
+      rol: a.rol,
+      rolNombre: NOMBRE_DEL_ROL[a.rol],
+      nombre: a.staff?.name ?? a.business.ownerName ?? null,
+      negocio: a.business.name,
+    },
+  });
+});
+
+// ─── El equipo (solo el dueño: no están en la tabla de permisos) ───────────
+//
+// GET    /business/:token/equipo            → las personas con acceso
+// POST   /business/:token/equipo            { nombre, rol } → la persona con su enlace
+// DELETE /business/:token/equipo/:staffId   → le quita el acceso, ya
+router.get('/:token/equipo', async (_req: Request, res: Response): Promise<void> => {
+  const a = _acceso(res);
+  if (!a) {
+    res.status(404).json({ success: false, error: 'Este enlace no es de ningún negocio.' });
+    return;
+  }
+  res.json({ success: true, data: { personas: await listarPersonal(a.business.id) } });
+});
+
+router.post('/:token/equipo', async (req: Request, res: Response): Promise<void> => {
+  const a = _acceso(res);
+  if (!a) {
+    res.status(404).json({ success: false, error: 'Este enlace no es de ningún negocio.' });
+    return;
+  }
+  try {
+    const body = (req.body ?? {}) as { nombre?: unknown; rol?: unknown };
+    const persona = await crearPersonal(a.business.id, body);
+    res.status(201).json({ success: true, data: { persona } });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos crear el acceso',
+    });
+  }
+});
+
+router.delete('/:token/equipo/:staffId', async (req: Request, res: Response): Promise<void> => {
+  const a = _acceso(res);
+  if (!a) {
+    res.status(404).json({ success: false, error: 'Este enlace no es de ningún negocio.' });
+    return;
+  }
+  try {
+    await revocarPersonal(a.business.id, req.params['staffId']!);
+    res.json({ success: true, data: { revocado: true } });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos quitar el acceso',
+    });
+  }
+});
 
 // GET /business/:token/clave → { tiene, exigible }
 router.get('/:token/clave', async (req: Request, res: Response): Promise<void> => {
@@ -1820,9 +1934,12 @@ router.post('/:token/cuentas/:tabId/cerrar', async (req: Request, res: Response)
   };
   try {
     const business = await getBusinessService().getBusinessByToken(token);
+    // Si cierra alguien del equipo, «quién cerró» es él: lo dice su enlace,
+    // no lo que mande el formulario.
+    const quien = _acceso(res)?.staff?.name;
     const cuenta = await cerrarCuenta(business.id, tabId, {
       ...(typeof paymentMethod === 'string' ? { paymentMethod } : {}),
-      ...(typeof closedBy === 'string' ? { closedBy } : {}),
+      ...(quien ? { closedBy: quien } : typeof closedBy === 'string' ? { closedBy } : {}),
     });
     res.json({ success: true, data: { cuenta } });
   } catch (err) {
