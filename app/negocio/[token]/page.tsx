@@ -4,6 +4,7 @@ import { use, useState, useEffect, useCallback, useRef } from 'react'
 import { ZipaLogo, ZipaLoading } from '../../ZipaLogo'
 import { useOrderAlert } from './useOrderAlert'
 import { PortalTabs } from './PortalTabs'
+import { InstalarApp } from './InstalarApp'
 import Link from 'next/link'
 import {
   Package,
@@ -859,6 +860,8 @@ export default function PortalDashboard({
       <PortalTabs token={token} activa="pedidos" />
 
       <div className={`${CONTENEDOR} space-y-6 py-5 sm:py-6`}>
+
+        <InstalarApp token={token} compacto />
 
         {data.business?.pagoPendienteDesde && (
           <div role="status" className="flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
