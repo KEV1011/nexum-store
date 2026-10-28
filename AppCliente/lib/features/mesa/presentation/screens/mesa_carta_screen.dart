@@ -217,7 +217,7 @@ class _MesaCartaScreenState extends ConsumerState<MesaCartaScreen> {
         if (!negocio.isOpen)
           const _Aviso('El local no está recibiendo pedidos ahora. Pídele al mesero.'),
         if (sinMesas)
-          const _Aviso('Este local todavía no recibe pedidos desde la mesa por la app.'),
+          const _Aviso('Este local aún no tiene activados los pedidos desde la mesa.'),
         for (final entrada in porSeccion.entries) ...[
           Padding(
             padding: const EdgeInsets.only(
