@@ -428,7 +428,7 @@ export async function placeClientOrder(
   const ultimaMilla = envio.lastMile;
   const promisedAt = envio.promisedAt;
 
-  const orderRef = `NX-${Math.floor(1000 + Math.random() * 8000)}`;
+  const orderRef = nuevaReferencia('NX');
 
   // ── Validación contra la BD ────────────────────────────────────────────────
   // El precio y la disponibilidad los decide SIEMPRE el servidor, nunca el
