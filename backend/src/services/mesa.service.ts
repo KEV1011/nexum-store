@@ -31,6 +31,7 @@ import { nombreEstadoPedido } from '../lib/estado-pedido';
 import { registrarEventoPedido, historialDePedido } from './pedido-eventos.service';
 import { cuentaAbiertaDeMesa } from './cuenta-mesa.service';
 import { seDespacha } from '../lib/modo-pedido';
+import { nuevaReferencia } from '../lib/referencia';
 import {
   lineaDeTiempoPedido, type EstadoPedidoBD, type PasoPedido,
 } from '../lib/linea-tiempo-pedido';
@@ -280,7 +281,7 @@ export async function crearPedidoEnMesa(
 
   const order = await prisma.order.create({
     data: {
-      orderRef: `MS-${Math.floor(1000 + Math.random() * 8000)}`,
+      orderRef: nuevaReferencia('MS'),
       ...(tabId ? { tabId } : {}),
       ...(mesero ? { takenByStaffId: mesero.id, takenByName: mesero.name } : {}),
       ...(dto.comensalId ? { dinerUserId: dto.comensalId } : {}),

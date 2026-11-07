@@ -81,6 +81,7 @@ import { maskPhone } from './safe-contact.service';
 import { marcarEncomiendasDeSalidaEnTransito } from './encomiendas.service';
 import { sendPushToDriver } from './push.service';
 import { cuerpoDeNuevaReserva, TITULO_NUEVA_RESERVA } from '../lib/aviso-reserva-puesto';
+import { nuevaReferencia } from '../lib/referencia';
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type TripCallback = (tripId: string, trip: PooledTripDTO) => void;
@@ -426,7 +427,7 @@ export async function publishPooledTrip(
     ? plantillaPara(dto.seatType as TipoConSillas, dto.seatRows, configSillas).sillas
     : dto.totalSeats;
 
-  const tripRef = `NXP-${Math.floor(1000 + Math.random() * 8000)}`;
+  const tripRef = nuevaReferencia('NXP');
   const trip = await prisma.pooledTrip.create({
     data: {
       tripRef,
@@ -636,7 +637,7 @@ export async function publicarPuestoUrbano(
 
   // Prefijo propio: en soporte, «NXU» dice de un vistazo que es un puesto
   // urbano y no una salida intermunicipal.
-  const tripRef = `NXU-${Math.floor(1000 + Math.random() * 8000)}`;
+  const tripRef = nuevaReferencia('NXU');
   const trip = await prisma.pooledTrip.create({
     data: {
       tripRef,
@@ -800,7 +801,7 @@ export async function publicarPuestoDePasajero(
   if (tarifa <= 0) throw new PooledTripError('No pudimos calcular el precio del puesto');
 
   // Prefijo propio para distinguirlo en soporte de un NXU (puesto del taxista).
-  const tripRef = `NXP-${Math.floor(1000 + Math.random() * 8000)}`;
+  const tripRef = nuevaReferencia('NXP');
 
   return prisma.$transaction(async (tx) => {
     const trip = await tx.pooledTrip.create({

@@ -130,6 +130,11 @@ async function main() {
         pS?.despues.name === 'Hamburguesa sencilla' && pS?.despues.description === 'carne, queso, tocineta',
         'separa ingredientes, quita el grito y corrige «Hamburgesa»', pS,
       );
+      // Desde el PR #206 la errata nace SIN marcar (aquí no hay foto ni
+      // confianza del OCR: lo escribió el dueño), y el grupo `texto` se
+      // aprueba entero, así que toda la propuesta de la sencilla espera a que
+      // el dueño la acepte.
+      check(pS?.marcada === false, 'con una errata dentro, la propuesta nace SIN marcar', pS);
       const pD = rev.propuestas.find((p) => p.productId === doble.id && p.grupo === 'seccion');
       check(pD?.despues.category === 'Hamburguesas', '«HAMBURGUESAS» se junta con «Hamburguesas»', pD);
       check(!rev.propuestas.some((p) => p.productId === bestia.id), 'no toca lo que está bien escrito');
@@ -167,8 +172,13 @@ async function main() {
     // El dueño edita la sección de la doble MIENTRAS revisaba.
     await prisma.product.update({ where: { id: doble.id }, data: { category: 'Especiales' } });
     const marcadas = rev.propuestas.filter((p) => p.marcada);
+    // La de la sencilla no venía marcada (lleva una errata): el dueño la marca
+    // a mano en el portal, que es lo que manda la pantalla en ese caso.
+    const aMano = rev.propuestas.find((p) => p.productId === sencilla.id && p.grupo === 'texto');
+    check(!!aMano && !aMano.marcada, 'la de la sencilla llega sin marcar y el dueño la acepta a mano', aMano);
     const cambios = [
       ...marcadas.map((p) => ({ productId: p.productId, antes: p.antes, despues: p.despues })),
+      ...(aMano ? [{ productId: aMano.productId, antes: aMano.antes, despues: aMano.despues }] : []),
       // Lo que el portal no manda, pero alguien podría: un precio, y un id ajeno.
       { productId: sencilla.id, antes: { price: 12_000, category: 'Hamburguesas' }, despues: { price: 1, category: 'Hamburguesas' } },
       { productId: ajeno.id, antes: { name: 'Plato del vecino' }, despues: { name: 'Hackeado' } },
