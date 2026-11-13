@@ -205,14 +205,25 @@ class _DetailViewState extends ConsumerState<_DetailView> {
       if (!mounted || !_scroll.hasClients) return;
 
       final ctx = _claves[seccion]?.currentContext;
-      if (ctx != null) {
-        await Scrollable.ensureVisible(
-          ctx,
+      final obj = ctx?.findRenderObject();
+      if (obj != null && obj.attached) {
+        // El encabezado se alinea JUSTO debajo de las barras fijadas —la
+        // cabecera del local (pinned, kToolbarHeight) y la barra de secciones
+        // (kAltoBarraSecciones)—, no en y=0. `Scrollable.ensureVisible` con
+        // `alignment: 0` lo llevaba al tope del viewport, donde quedaba TAPADO
+        // por esas barras; y en las secciones de arriba el salto a y=0 era casi
+        // nulo, así que tocar el chip parecía no hacer nada. Es el mismo margen
+        // con que se detecta la sección activa (`_alDesplazar`) y el `-92` de
+        // la carta del QR.
+        const pinned = kToolbarHeight + kAltoBarraSecciones;
+        final revelar =
+            RenderAbstractViewport.of(obj).getOffsetToReveal(obj, 0.0).offset;
+        final objetivo =
+            (revelar - pinned).clamp(0.0, _scroll.position.maxScrollExtent);
+        await _scroll.animateTo(
+          objetivo,
           duration: const Duration(milliseconds: 320),
           curve: Curves.easeOutCubic,
-          // Justo debajo de la barra fijada, no tapado por ella.
-          alignment: 0,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
         );
         return;
       }
