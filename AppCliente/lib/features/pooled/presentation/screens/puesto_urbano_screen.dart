@@ -244,7 +244,10 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
             child: const Text('No'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: colorDeTextoSobre(AppColors.error),
+            ),
             onPressed: () => Navigator.of(ctx).pop(true),
             child: const Text('Sí, cancelar'),
           ),
