@@ -216,8 +216,8 @@ mixin SaltoASecciones<T extends StatefulWidget> on State<T> {
   bool _medicionPendiente = false;
 
   /// Alto de lo que queda fijado ENCIMA de la carta dentro del desplazable
-  /// (cabecera plegada + barra). El encabezado de una sección cae justo
-  /// debajo, no tapado.
+  /// (cabecera plegada + barra). Un encabezado que llega ahí es la sección
+  /// que se está viendo.
   double get altoFijadoArriba;
 
   GlobalKey claveDeSeccion(String seccion) =>
@@ -302,19 +302,15 @@ mixin SaltoASecciones<T extends StatefulWidget> on State<T> {
         if (!mounted || !scrollCarta.hasClients) return;
         final ctx = _clavesSeccion[seccion]?.currentContext;
         if (ctx != null) {
-          // `alignment` reparte el hueco que SOBRA (alto visible menos el
-          // del encabezado), no el alto entero: dividir entre el alto entero
-          // dejaba el encabezado unos píxeles metido bajo la barra.
-          final caja = ctx.findRenderObject();
-          final altoEncabezado = caja is RenderBox && caja.hasSize ? caja.size.height : 0.0;
-          final hueco = scrollCarta.position.viewportDimension - altoEncabezado;
-          final alineacion =
-              hueco > 0 ? (altoFijadoArriba / hueco).clamp(0.0, 1.0).toDouble() : 0.0;
+          // Alineación 0, a propósito: el viewport YA descuenta lo que va
+          // fijado (`pinned`) en el mismo desplazable —la cabecera plegada y
+          // esta barra— y deja el encabezado justo debajo. Sumar ese alto
+          // aquí lo contaba dos veces: el encabezado caía casi 50 px más
+          // abajo (lo cazó la prueba del salto).
           await Scrollable.ensureVisible(
             ctx,
             duration: const Duration(milliseconds: 320),
             curve: Curves.easeOutCubic,
-            alignment: alineacion,
             alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
           );
           return;
