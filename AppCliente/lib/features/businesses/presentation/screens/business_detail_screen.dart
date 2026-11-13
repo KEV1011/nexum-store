@@ -205,25 +205,27 @@ class _DetailViewState extends ConsumerState<_DetailView> {
       if (!mounted || !_scroll.hasClients) return;
 
       final ctx = _claves[seccion]?.currentContext;
-      final obj = ctx?.findRenderObject();
-      if (obj != null && obj.attached) {
+      if (ctx != null) {
         // El encabezado se alinea JUSTO debajo de las barras fijadas —la
         // cabecera del local (pinned, kToolbarHeight) y la barra de secciones
-        // (kAltoBarraSecciones)—, no en y=0. `Scrollable.ensureVisible` con
-        // `alignment: 0` lo llevaba al tope del viewport, donde quedaba TAPADO
-        // por esas barras; y en las secciones de arriba el salto a y=0 era casi
-        // nulo, así que tocar el chip parecía no hacer nada. Es el mismo margen
-        // con que se detecta la sección activa (`_alDesplazar`) y el `-92` de
-        // la carta del QR.
-        const pinned = kToolbarHeight + kAltoBarraSecciones;
-        final revelar =
-            RenderAbstractViewport.of(obj).getOffsetToReveal(obj, 0.0).offset;
-        final objetivo =
-            (revelar - pinned).clamp(0.0, _scroll.position.maxScrollExtent);
-        await _scroll.animateTo(
-          objetivo,
+        // (kAltoBarraSecciones)—, no en y=0. Con `alignment: 0` iba al tope del
+        // viewport, donde queda TAPADO por esas barras; y en las secciones de
+        // arriba el salto a y=0 era casi nulo, así que tocar el chip parecía no
+        // hacer nada. `alignment` es una fracción del alto visible, así que se
+        // traduce el alto fijo de las barras a esa fracción. Mismo margen con
+        // que `_alDesplazar` detecta la sección activa y el `-92` de la web.
+        final alto = _scroll.position.viewportDimension;
+        final alineacion = alto > 0
+            ? ((kToolbarHeight + kAltoBarraSecciones) / alto)
+                .clamp(0.0, 0.5)
+                .toDouble()
+            : 0.0;
+        await Scrollable.ensureVisible(
+          ctx,
           duration: const Duration(milliseconds: 320),
           curve: Curves.easeOutCubic,
+          alignment: alineacion,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
         );
         return;
       }
