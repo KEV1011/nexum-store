@@ -207,6 +207,14 @@ mixin SaltoASecciones<T extends StatefulWidget> on State<T> {
 
   bool _saltando = false;
 
+  /// Dónde quedó la carta tras un salto. Mientras siga ahí, manda el chip
+  /// que se tocó: si la carta es corta el encabezado no llega arriba, y el
+  /// detector volvería a marcar la sección anterior. Al moverla con el dedo
+  /// se suelta.
+  double? _fijadaEn;
+
+  bool _medicionPendiente = false;
+
   /// Alto de lo que queda fijado ENCIMA de la carta dentro del desplazable
   /// (cabecera plegada + barra). El encabezado de una sección cae justo
   /// debajo, no tapado.
@@ -240,9 +248,28 @@ mixin SaltoASecciones<T extends StatefulWidget> on State<T> {
     return caja.localToGlobal(Offset.zero, ancestor: vista).dy;
   }
 
-  /// Marca como activa la última sección cuyo encabezado ya pasó por arriba.
+  /// Mide DESPUÉS del fotograma: el aviso del desplazamiento llega antes de
+  /// que la carta se recoloque, y medir en ese instante daba las posiciones
+  /// del fotograma anterior.
   void _alDesplazarCarta() {
-    if (!mounted || _saltando || ordenSecciones.isEmpty) return;
+    if (_medicionPendiente) return;
+    _medicionPendiente = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _medicionPendiente = false;
+      _medirSeccionActiva();
+    });
+  }
+
+  /// Marca como activa la última sección cuyo encabezado ya pasó por arriba.
+  void _medirSeccionActiva() {
+    if (!mounted || _saltando || ordenSecciones.isEmpty || !scrollCarta.hasClients) {
+      return;
+    }
+    final fijada = _fijadaEn;
+    if (fijada != null) {
+      if ((scrollCarta.position.pixels - fijada).abs() < 2) return;
+      _fijadaEn = null;
+    }
     final tope = altoFijadoArriba + 8;
     String? vista;
     for (final s in ordenSecciones) {
@@ -269,6 +296,7 @@ mixin SaltoASecciones<T extends StatefulWidget> on State<T> {
     if (indiceDestino == -1) return;
     setState(() => seccionActiva = seccion);
     _saltando = true;
+    _fijadaEn = null;
     try {
       for (var intento = 0; intento < maxIntentos; intento++) {
         if (!mounted || !scrollCarta.hasClients) return;
@@ -313,6 +341,7 @@ mixin SaltoASecciones<T extends StatefulWidget> on State<T> {
       }
     } finally {
       _saltando = false;
+      if (scrollCarta.hasClients) _fijadaEn = scrollCarta.position.pixels;
       if (mounted && seccionActiva != seccion) {
         setState(() => seccionActiva = seccion);
       }

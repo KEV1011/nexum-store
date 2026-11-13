@@ -185,22 +185,23 @@ void main() {
   });
 
   group('el salto a una sección', () {
-    const secciones = ['S0', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7'];
+    // Seis: a 360 px caben todos los chips sin desplazar la barra.
+    const secciones = ['S0', 'S1', 'S2', 'S3', 'S4', 'S5'];
 
     testWidgets('lleva a una sección lejana y la deja justo bajo la barra',
         (tester) async {
-      // S6 está a más de tres mil píxeles: no está construida al tocar el
+      // S4 está a más de dos mil píxeles: no está construida al tocar el
       // chip, así que el salto tiene que avanzar y reintentar.
       await _montarCarta(tester, secciones, 5);
-      expect(find.text('Encabezado S6'), findsNothing);
+      expect(find.text('Encabezado S4'), findsNothing);
 
-      await tester.tap(find.text('S6'));
+      await tester.tap(find.text('S4'));
       await tester.pumpAndSettle();
 
-      final arriba = tester.getTopLeft(find.text('Encabezado S6')).dy;
+      final arriba = tester.getTopLeft(find.text('Encabezado S4')).dy;
       // Ni tapado por la barra ni con un hueco encima.
       expect(arriba, closeTo(kAltoBarraSecciones, 1));
-      expect(_chipsMarcados(tester), ['S6']);
+      expect(_chipsMarcados(tester), ['S4']);
     });
 
     testWidgets('en una carta corta el chip se marca aunque no haya a dónde bajar',
@@ -222,7 +223,8 @@ void main() {
 
       // Encabezado de Si en la carta: 120 + 52 + i·540 − desplazamiento.
       estado.scrollCarta.jumpTo(700);
-      await tester.pump();
+      await tester.pump(); // se recoloca la carta y se mide
+      await tester.pump(); // se pinta la barra con la sección medida
 
       expect(_chipsMarcados(tester), ['S1']);
     });
