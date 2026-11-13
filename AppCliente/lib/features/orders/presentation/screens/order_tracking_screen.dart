@@ -391,38 +391,41 @@ class _RatingCard extends StatelessWidget {
       );
     }
 
+    // En COLUMNA, no en una fila con el botón al lado. En una fila, si el
+    // ancho disponible se estrecha, el texto del título se parte y en el peor
+    // caso se apila letra por letra (lo que el usuario reportó: «se escribe
+    // hacia abajo y ocupa mucho espacio»). Apilado —título, subtítulo y el
+    // botón ancho debajo— no hay forma de que eso pase, igual que la rama de
+    // «ya calificado».
     return _Card(
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '¿Cómo estuvo tu pedido?',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Tu opinión ayuda a mejorar el servicio',
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 13,
-                    color: context.textSecondaryColor,
-                  ),
-                ),
-              ],
+          Text(
+            '¿Cómo estuvo tu pedido?',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 15,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(width: AppConstants.spacingM),
-          Builder(
-            builder: (ctx) => OutlinedButton(
-              onPressed: () => showRatingSheet(ctx, order),
-              child: const Text('Calificar'),
+          const SizedBox(height: 2),
+          Text(
+            'Tu opinión ayuda a mejorar el servicio',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 13,
+              color: context.textSecondaryColor,
+            ),
+          ),
+          const SizedBox(height: AppConstants.spacingM),
+          SizedBox(
+            width: double.infinity,
+            child: Builder(
+              builder: (ctx) => OutlinedButton(
+                onPressed: () => showRatingSheet(ctx, order),
+                child: const Text('Calificar'),
+              ),
             ),
           ),
         ],
