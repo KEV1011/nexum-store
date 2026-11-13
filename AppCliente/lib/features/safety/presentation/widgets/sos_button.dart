@@ -133,7 +133,8 @@ Future<void> _showActions(
     ),
     builder: (sheetCtx) => Padding(
       padding: EdgeInsets.fromLTRB(
-        24, 24, 24, MediaQuery.of(sheetCtx).viewInsets.bottom + 32),
+        24, 24, 24, MediaQuery.of(sheetCtx).viewInsets.bottom +
+            MediaQuery.of(sheetCtx).viewPadding.bottom + 32),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -630,7 +630,10 @@ class _DriverCard extends StatelessWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => Padding(
+      builder: (_) => SafeArea(
+        // La barra de navegación del teléfono iba encima del último botón.
+        top: false,
+        child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -672,6 +675,7 @@ class _DriverCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
       ),
     );
   }

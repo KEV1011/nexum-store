@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_driver/core/utils/rumbo_vehiculo.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
@@ -1321,7 +1322,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     // mandado), no por el modo del conductor: desde la unificación recibe
     // entregas aunque esté en modo Pasajeros (antes se saltaba la foto).
     final isDelivery = trip.request.isDelivery;
-    return switch (trip.state) {
+    final tarjeta = switch (trip.state) {
       ActiveTripState.toPickup => GoingToPassengerCard(
           trip: trip,
           routeProgress: _routeProgress,
@@ -1342,6 +1343,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           onFinishTrip: _isLoading ? null : _handleFinishTrip,
         ),
     };
+    return _PanelInferior(child: tarjeta);
   }
 
   // Deriva el modo de trabajo del TIPO REAL del viaje (no del selector del
@@ -1792,6 +1794,44 @@ class _BuscandoSenalGps extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// LA TARJETA DEL VIAJE NO CABÍA EN TODOS LOS TELÉFONOS.
+///
+/// Las tres tarjetas (camino a recoger, esperando, en curso) son columnas
+/// fijas pensadas para un teléfono alto. En uno bajo, o con la letra del
+/// sistema agrandada, o con notas y paradas, la tarjeta pasaba del alto
+/// disponible y se recortaba por arriba; y en los Android de borde a borde la
+/// barra de navegación del sistema iba encima del botón final («Llegué»,
+/// «Iniciar viaje», «Finalizar»). Aquí se le pone techo —lo que no quepa se
+/// desplaza dentro— y se reserva el alto de la barra del sistema con el mismo
+/// color de la tarjeta, para que debajo no asome una franja de mapa.
+class _PanelInferior extends StatelessWidget {
+  const _PanelInferior({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: media.size.height * 0.72),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            child,
+            if (media.viewPadding.bottom > 0)
+              ColoredBox(
+                color: context.surfaceColor,
+                child: SizedBox(height: media.viewPadding.bottom),
+              ),
+          ],
         ),
       ),
     );

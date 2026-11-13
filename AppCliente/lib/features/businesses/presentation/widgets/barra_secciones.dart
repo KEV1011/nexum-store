@@ -174,6 +174,152 @@ class _Chip extends StatelessWidget {
   }
 }
 
+/// El salto de la barra a la carta, compartido por las dos cartas de la app:
+/// la del local (domicilio) y la de la mesa (QR). Antes vivía dentro del
+/// detalle del local y la carta de la mesa no tenía barra: el mismo local,
+/// dos cartas, y en una no se podía ir a «Bebidas».
+///
+/// Quien lo usa pone `scrollCarta` en su `CustomScrollView`, la barra con
+/// `seccionActiva`/`irASeccion`, cada encabezado con `claveDeSeccion(...)`,
+/// rellena `ordenSecciones` en el MISMO orden en que pinta las secciones, y
+/// dice cuánto queda fijado encima de la carta (`altoFijadoArriba`).
+///
+/// TRES COSAS QUE HACÍAN PARECER QUE «TOCO Y NO PASA NADA»:
+///  · El chip no cambiaba hasta que el desplazamiento terminaba, y en una
+///    carta corta el desplazamiento no ocurre: la última sección no puede
+///    subir hasta el tope porque no hay nada debajo. Ahora el chip se marca
+///    al tocarlo y se queda marcado.
+///  · Durante el salto, el detector de «qué sección estoy viendo» corría con
+///    cada fotograma y volvía a marcar la sección por la que pasaba.
+///  · La posición se medía contra la PANTALLA, así que la barra de estado
+///    del teléfono (de 24 a 48 px según el modelo) corría el punto donde
+///    caía el encabezado: quedaba medio tapado por la barra. Ahora se mide
+///    contra la carta.
+mixin SaltoASecciones<T extends StatefulWidget> on State<T> {
+  final ScrollController scrollCarta = ScrollController();
+  final Map<String, GlobalKey> _clavesSeccion = {};
+
+  /// La sección que está a la vista, o `null` mientras no se sepa.
+  String? seccionActiva;
+
+  /// El orden en que se pintan las secciones, que es el de la barra.
+  List<String> ordenSecciones = const [];
+
+  bool _saltando = false;
+
+  /// Alto de lo que queda fijado ENCIMA de la carta dentro del desplazable
+  /// (cabecera plegada + barra). El encabezado de una sección cae justo
+  /// debajo, no tapado.
+  double get altoFijadoArriba;
+
+  GlobalKey claveDeSeccion(String seccion) =>
+      _clavesSeccion.putIfAbsent(seccion, GlobalKey.new);
+
+  @override
+  void initState() {
+    super.initState();
+    scrollCarta.addListener(_alDesplazarCarta);
+  }
+
+  @override
+  void dispose() {
+    scrollCarta
+      ..removeListener(_alDesplazarCarta)
+      ..dispose();
+    super.dispose();
+  }
+
+  /// Dónde está el encabezado, medido desde el borde de arriba de la CARTA.
+  /// `null` si no está construido.
+  double? _dyEnLaCarta(String seccion) {
+    if (!scrollCarta.hasClients) return null;
+    final caja = _clavesSeccion[seccion]?.currentContext?.findRenderObject();
+    if (caja is! RenderBox || !caja.attached) return null;
+    final vista = scrollCarta.position.context.storageContext.findRenderObject();
+    if (vista is! RenderBox || !vista.attached) return null;
+    return caja.localToGlobal(Offset.zero, ancestor: vista).dy;
+  }
+
+  /// Marca como activa la última sección cuyo encabezado ya pasó por arriba.
+  void _alDesplazarCarta() {
+    if (!mounted || _saltando || ordenSecciones.isEmpty) return;
+    final tope = altoFijadoArriba + 8;
+    String? vista;
+    for (final s in ordenSecciones) {
+      final dy = _dyEnLaCarta(s);
+      if (dy != null && dy <= tope) vista = s;
+    }
+    // Ninguna «alcanzada»: solo es cierto si la PRIMERA está construida y por
+    // debajo del tope. Si no está construida es que quedó muy arriba (se
+    // desmontó al salir de la vista) y seguimos dentro de la que ya estaba.
+    if (vista == null && _dyEnLaCarta(ordenSecciones.first) == null) return;
+    if (vista != seccionActiva) setState(() => seccionActiva = vista);
+  }
+
+  /// Lleva la carta hasta una sección.
+  ///
+  /// En dos fases a propósito: lo que está lejos no está construido y su
+  /// clave no tiene contexto, así que se avanza una pantalla en la dirección
+  /// correcta —lo que obliga a construir lo siguiente— y se reintenta. El
+  /// número de intentos está acotado: si no se llega, la carta se queda donde
+  /// esté y se sigue pudiendo desplazar a mano.
+  Future<void> irASeccion(String seccion) async {
+    const maxIntentos = 8;
+    final indiceDestino = ordenSecciones.indexOf(seccion);
+    if (indiceDestino == -1) return;
+    setState(() => seccionActiva = seccion);
+    _saltando = true;
+    try {
+      for (var intento = 0; intento < maxIntentos; intento++) {
+        if (!mounted || !scrollCarta.hasClients) return;
+        final ctx = _clavesSeccion[seccion]?.currentContext;
+        if (ctx != null) {
+          // `alignment` reparte el hueco que SOBRA (alto visible menos el
+          // del encabezado), no el alto entero: dividir entre el alto entero
+          // dejaba el encabezado unos píxeles metido bajo la barra.
+          final caja = ctx.findRenderObject();
+          final altoEncabezado = caja is RenderBox && caja.hasSize ? caja.size.height : 0.0;
+          final hueco = scrollCarta.position.viewportDimension - altoEncabezado;
+          final alineacion =
+              hueco > 0 ? (altoFijadoArriba / hueco).clamp(0.0, 1.0).toDouble() : 0.0;
+          await Scrollable.ensureVisible(
+            ctx,
+            duration: const Duration(milliseconds: 320),
+            curve: Curves.easeOutCubic,
+            alignment: alineacion,
+            alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+          );
+          return;
+        }
+        // No está construida. Si alguna construida va DESPUÉS en el orden, la
+        // que buscamos quedó arriba; si no, está más abajo.
+        var haciaAbajo = true;
+        for (var i = indiceDestino + 1; i < ordenSecciones.length; i++) {
+          if (_dyEnLaCarta(ordenSecciones[i]) != null) {
+            haciaAbajo = false;
+            break;
+          }
+        }
+        final pos = scrollCarta.position;
+        final salto = pos.viewportDimension * 0.9;
+        final destino = (haciaAbajo ? pos.pixels + salto : pos.pixels - salto)
+            .clamp(0.0, pos.maxScrollExtent);
+        if (destino == pos.pixels) return;
+        await scrollCarta.animateTo(
+          destino,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        );
+      }
+    } finally {
+      _saltando = false;
+      if (mounted && seccionActiva != seccion) {
+        setState(() => seccionActiva = seccion);
+      }
+    }
+  }
+}
+
 /// El `SliverPersistentHeaderDelegate` que la deja fijada arriba.
 class BarraSeccionesDelegate extends SliverPersistentHeaderDelegate {
   const BarraSeccionesDelegate({

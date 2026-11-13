@@ -110,7 +110,8 @@ class _DetailView extends ConsumerStatefulWidget {
   ConsumerState<_DetailView> createState() => _DetailViewState();
 }
 
-class _DetailViewState extends ConsumerState<_DetailView> {
+class _DetailViewState extends ConsumerState<_DetailView>
+    with SaltoASecciones<_DetailView> {
   /// Texto del buscador. Un supermercado tiene cientos de referencias y
   /// recorrer la lista entera no es viable; en un restaurante con pocos
   /// platos el buscador ni se muestra.
@@ -128,26 +129,16 @@ class _DetailViewState extends ConsumerState<_DetailView> {
   /// Con una sola sección la barra no filtra ni ordena nada: sobra.
   static const _minSeccionesParaBarra = 2;
 
-  final ScrollController _scroll = ScrollController();
-
-  /// Una clave por encabezado de sección, para poder saltar a ella y para
-  /// saber cuál está a la vista. Se reutilizan entre reconstrucciones: una
-  /// clave nueva en cada `build` desmontaría y remontaría el encabezado.
-  final Map<String, GlobalKey> _claves = {};
-
-  /// La sección que está a la vista, o `null` mientras no se sepa.
-  String? _seccionActiva;
-
-  /// El orden en que se pintan las secciones, que es el de la barra.
-  List<String> _orden = const [];
-
-  GlobalKey _claveDe(String seccion) =>
-      _claves.putIfAbsent(seccion, GlobalKey.new);
+  /// Lo que queda fijado encima de la carta: la cabecera del local plegada
+  /// (barra de herramientas + barra de estado del teléfono) y la barra de
+  /// secciones.
+  @override
+  double get altoFijadoArriba =>
+      kToolbarHeight + MediaQuery.paddingOf(context).top + kAltoBarraSecciones;
 
   @override
   void initState() {
     super.initState();
-    _scroll.addListener(_alDesplazar);
     _query = widget.busquedaInicial?.trim() ?? '';
     _buscador = TextEditingController(text: _query);
     // Solo si el local DE VERDAD tiene platos de ese antojo: un enlace viejo
@@ -161,90 +152,7 @@ class _DetailViewState extends ConsumerState<_DetailView> {
   @override
   void dispose() {
     _buscador.dispose();
-    _scroll
-      ..removeListener(_alDesplazar)
-      ..dispose();
     super.dispose();
-  }
-
-  /// Marca como activa la última sección cuyo encabezado ya pasó por arriba.
-  ///
-  /// Solo mira las que están CONSTRUIDAS: las de más abajo no tienen contexto
-  /// todavía, y eso está bien porque por definición no son la que se está
-  /// mirando.
-  void _alDesplazar() {
-    if (!mounted) return;
-    String? vista;
-    for (final s in _orden) {
-      final ctx = _claves[s]?.currentContext;
-      if (ctx == null) continue;
-      final caja = ctx.findRenderObject();
-      if (caja is! RenderBox || !caja.attached) continue;
-      // Un poco por debajo del borde: el encabezado se considera «alcanzado»
-      // justo cuando se mete bajo la barra, no cuando asoma por abajo.
-      final dy = caja.localToGlobal(Offset.zero).dy;
-      if (dy <= kAltoBarraSecciones + kToolbarHeight + 8) vista = s;
-    }
-    if (vista != _seccionActiva) setState(() => _seccionActiva = vista);
-  }
-
-  /// Lleva la carta hasta una sección.
-  ///
-  /// En dos fases a propósito: lo que está lejos no está construido y su
-  /// clave no tiene contexto, así que se avanza una pantalla en la dirección
-  /// correcta —lo que obliga a construir lo siguiente— y se reintenta. El
-  /// número de intentos está acotado: si no se llega, la carta se queda donde
-  /// esté y se sigue pudiendo desplazar a mano, que es mucho mejor que un
-  /// bucle sin final.
-  Future<void> _irASeccion(String seccion) async {
-    const maxIntentos = 8;
-    final indiceDestino = _orden.indexOf(seccion);
-    if (indiceDestino == -1) return;
-
-    for (var intento = 0; intento < maxIntentos; intento++) {
-      if (!mounted || !_scroll.hasClients) return;
-
-      final ctx = _claves[seccion]?.currentContext;
-      if (ctx != null) {
-        // El encabezado se alinea JUSTO debajo de las barras fijadas —la
-        // cabecera del local (pinned, kToolbarHeight) y la barra de secciones
-        // (kAltoBarraSecciones)—, no en y=0. Con `alignment: 0` iba al tope del
-        // viewport, donde queda TAPADO por esas barras; y en las secciones de
-        // arriba el salto a y=0 era casi nulo, así que tocar el chip parecía no
-        // hacer nada. `alignment` es una fracción del alto visible, así que se
-        // traduce el alto fijo de las barras a esa fracción. Mismo margen con
-        // que `_alDesplazar` detecta la sección activa y el `-92` de la web.
-        final alto = _scroll.position.viewportDimension;
-        final alineacion = alto > 0
-            ? ((kToolbarHeight + kAltoBarraSecciones) / alto)
-                .clamp(0.0, 0.5)
-                .toDouble()
-            : 0.0;
-        await Scrollable.ensureVisible(
-          ctx,
-          duration: const Duration(milliseconds: 320),
-          curve: Curves.easeOutCubic,
-          alignment: alineacion,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-        );
-        return;
-      }
-
-      // No está construida. Hacia dónde: si la activa va antes en el orden,
-      // la que falta está más abajo.
-      final indiceActual = _seccionActiva == null ? -1 : _orden.indexOf(_seccionActiva!);
-      final haciaAbajo = indiceDestino > indiceActual;
-      final pos = _scroll.position;
-      final salto = pos.viewportDimension * 0.9;
-      final destino = (haciaAbajo ? pos.pixels + salto : pos.pixels - salto)
-          .clamp(0.0, pos.maxScrollExtent);
-      if (destino == pos.pixels) return;
-      await _scroll.animateTo(
-        destino,
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOut,
-      );
-    }
   }
 
   @override
@@ -288,7 +196,7 @@ class _DetailViewState extends ConsumerState<_DetailView> {
     // El orden de la barra es EXACTAMENTE el orden en que se pintan las
     // secciones más abajo. Si fueran dos listas distintas, tocar un chip
     // llevaría a otra sección.
-    _orden = [
+    ordenSecciones = [
       if (populares.isNotEmpty) 'Lo más pedido',
       if (enOferta.isNotEmpty) 'Descuentos',
       ...grouped.keys,
@@ -297,11 +205,11 @@ class _DetailViewState extends ConsumerState<_DetailView> {
     // resultados, no la carta, y una barra de secciones sobre una lista
     // filtrada promete saltos que no existen.
     final conBarra =
-        q.isEmpty && _antojo == null && _orden.length >= _minSeccionesParaBarra;
+        q.isEmpty && _antojo == null && ordenSecciones.length >= _minSeccionesParaBarra;
 
     return Scaffold(
       body: CustomScrollView(
-        controller: _scroll,
+        controller: scrollCarta,
         slivers: [
           _BusinessAppBar(business: business),
           // Nota, tiempo y envío DEBAJO de la cabecera, no encima de ella.
@@ -426,16 +334,16 @@ class _DetailViewState extends ConsumerState<_DetailView> {
             SliverPersistentHeader(
               pinned: true,
               delegate: BarraSeccionesDelegate(
-                secciones: _orden,
-                activa: _seccionActiva,
-                onSeleccion: (s) => unawaited(_irASeccion(s)),
+                secciones: ordenSecciones,
+                activa: seccionActiva,
+                onSeleccion: (s) => unawaited(irASeccion(s)),
               ),
             ),
           if (populares.isNotEmpty) ...[
             SliverToBoxAdapter(
               child: _SectionHeader(
                 title: 'Lo más pedido',
-                anclaKey: _claveDe('Lo más pedido'),
+                anclaKey: claveDeSeccion('Lo más pedido'),
               ),
             ),
             _RejillaProductos(
@@ -449,7 +357,7 @@ class _DetailViewState extends ConsumerState<_DetailView> {
             SliverToBoxAdapter(
               child: _SectionHeader(
                 title: 'Descuentos',
-                anclaKey: _claveDe('Descuentos'),
+                anclaKey: claveDeSeccion('Descuentos'),
               ),
             ),
             _RejillaProductos(
@@ -463,7 +371,7 @@ class _DetailViewState extends ConsumerState<_DetailView> {
             SliverToBoxAdapter(
               child: _SectionHeader(
                 title: entry.key,
-                anclaKey: _claveDe(entry.key),
+                anclaKey: claveDeSeccion(entry.key),
               ),
             ),
             _RejillaProductos(

@@ -547,9 +547,16 @@ class _PooledTripCard extends StatelessWidget {
 
 /// El botón de validar tiquetes. Icono y no texto: va al lado de acciones
   /// con nombre largo y en pantallas de 320 px la fila se parte.
+  ///
+  /// `minimumSize` con ancho CERO: el tema pone a todo OutlinedButton un ancho
+  /// mínimo infinito (`Size.fromHeight`, para los botones de acción a lo
+  /// ancho). Dentro de una fila eso le quita todo el ancho al botón de al lado
+  /// —«Iniciar» y «Finalizar viaje» se quedaban sin ancho y no se podían
+  /// tocar—. Con ancho cero el botón abraza su icono.
   Widget _botonTiquete() => OutlinedButton(
         onPressed: onAbordar,
         style: OutlinedButton.styleFrom(
+          minimumSize: const Size(0, kMinInteractiveDimension),
           foregroundColor: _kPooledColor,
           side: const BorderSide(color: _kPooledColor),
           padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -580,6 +587,9 @@ class _PooledTripCard extends StatelessWidget {
             OutlinedButton(
               onPressed: onCancel,
               style: OutlinedButton.styleFrom(
+                // Ancho finito: con el del tema (infinito) «Iniciar» quedaba
+                // sin ancho. Ver `_botonTiquete`.
+                minimumSize: const Size(0, kMinInteractiveDimension),
                 foregroundColor: AppColors.error,
                 side: const BorderSide(color: AppColors.error),
               ),

@@ -704,7 +704,9 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
           color: context.surfaceColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        // + la barra de navegación del teléfono (sin teclado): el botón final
+        // quedaba debajo de ella en los Android de borde a borde.
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + _margenSistema(context)),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1038,7 +1040,9 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
           color: context.surfaceColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
+        // + la barra de navegación del teléfono (sin teclado): el botón final
+        // quedaba debajo de ella en los Android de borde a borde.
+        padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + _margenSistema(context)),
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1417,4 +1421,11 @@ class _PrecioFijo extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Lo que tapa la barra de navegación del sistema por debajo de una hoja.
+/// Con el teclado abierto no se suma: la hoja ya sube por encima de él.
+double _margenSistema(BuildContext context) {
+  final media = MediaQuery.of(context);
+  return media.viewInsets.bottom > 0 ? 0 : media.viewPadding.bottom;
 }

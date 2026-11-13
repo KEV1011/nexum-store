@@ -88,7 +88,9 @@ class HojaDeslizable extends StatelessWidget {
             // encoge a su alto en vez de estirarse hasta el tope.
             Flexible(
               child: SingleChildScrollView(
-                padding: padding,
+                padding: padding.copyWith(
+                  bottom: padding.bottom + _margenSistema(media),
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: crossAxisAlignment,
@@ -128,7 +130,24 @@ Widget envolverHoja(
     padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
     child: ConstrainedBox(
       constraints: BoxConstraints(maxHeight: media.size.height * fraccionMaxima),
-      child: SingleChildScrollView(child: contenido),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(bottom: _margenSistema(media)),
+        child: contenido,
+      ),
     ),
   );
 }
+
+/// LA BARRA DE NAVEGACIÓN DEL TELÉFONO TAPABA EL ÚLTIMO BOTÓN DE LA HOJA.
+///
+/// Una hoja inferior llega hasta el borde de abajo de la pantalla, y en los
+/// Android que dibujan de borde a borde (obligatorio desde Android 15) los
+/// botones del sistema —o la rayita de gestos— van ENCIMA de ella. El
+/// botón con que se termina cada hoja («Enviar a la cocina», «Calificar»,
+/// «Solicitar») quedaba debajo: en unos teléfonos se veía y en otros no, que
+/// es justo el reporte «ciertos celulares no ven toda la información».
+///
+/// Con el teclado abierto no se suma: la hoja ya sube por encima de él y el
+/// teclado tapa la barra del sistema.
+double _margenSistema(MediaQueryData media) =>
+    media.viewInsets.bottom > 0 ? 0 : media.viewPadding.bottom;
