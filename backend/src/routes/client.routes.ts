@@ -77,6 +77,8 @@ import {
   plazaDelPasajero,
   topeDelPuestoUrbano,
   publicarPuestoDePasajero,
+  listarMisPuestosUrbanos,
+  cancelarMiPuestoUrbano,
   PooledTripError,
 } from '../services/intercity-pool.service';
 import {
@@ -1286,6 +1288,43 @@ router.post(
     }
   },
 );
+
+// GET /client/pool/urbano/mios — los puestos que el pasajero publicó y su estado.
+//
+// Resuelve «publiqué mi viaje y no sé qué pasó»: cada uno dice si un taxista lo
+// tomó y cuántos pasajeros se sumaron. Va antes que cualquier `/:id` para que
+// no lo capture una ruta con parámetro.
+router.get('/pool/urbano/mios', clientAuthMiddleware, async (req, res) => {
+  try {
+    const trips = await listarMisPuestosUrbanos(req.clientId!);
+    res.json({ success: true, data: trips });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos cargar tus viajes publicados',
+    });
+  }
+});
+
+// POST /client/pool/urbano/:id/cancel — el pasajero cancela el puesto que publicó.
+router.post('/pool/urbano/:id/cancel', clientAuthMiddleware, async (req, res) => {
+  try {
+    const trip = await cancelarMiPuestoUrbano(req.clientId!, req.params['id']!);
+    if (!trip) {
+      res.status(404).json({
+        success: false,
+        error: 'No encontramos ese viaje tuyo, o ya salió y no se puede cancelar.',
+      });
+      return;
+    }
+    res.json({ success: true, data: trip });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No pudimos cancelar el viaje',
+    });
+  }
+});
 
 router.get('/intercity/pool/bookings', clientAuthMiddleware, async (req, res) => {
   res.json({ success: true, data: await getClientBookings(req.clientId!) });

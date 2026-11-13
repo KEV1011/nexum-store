@@ -57,6 +57,10 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
   }
 
   Future<void> _cargar() async {
+    // Lo que el pasajero publicó NO depende de dónde esté ahora: se carga
+    // siempre, aunque no haya GPS ni cobertura, para que pueda ver su viaje y
+    // cancelarlo desde cualquier estado de esta pantalla.
+    await ref.read(pooledProvider.notifier).cargarMisPuestos();
     // Con ciudad elegida no se pide el GPS: pedir un permiso que no se va a
     // usar es la clase de cosa que enseña a decir «no».
     if (_ciudadElegida != null) {
@@ -187,11 +191,79 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
                   ),
                 ),
               ),
+            // Lo que el pasajero publicó, con su estado: ¿ya lo tomó un
+            // taxista? ¿se sumó alguien? Va arriba del todo y en cualquier
+            // estado de la pantalla —era el hueco: tras publicar no había
+            // forma de ver qué pasó ni de cancelar—.
+            if (state.misPuestos.isNotEmpty) ...[
+              Text(
+                state.misPuestos.length == 1
+                    ? 'Tu viaje publicado'
+                    : 'Tus viajes publicados',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (final t in state.misPuestos)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _TarjetaMiPuesto(
+                    trip: t,
+                    onCancelar: () => _cancelarMiPuesto(t),
+                  ),
+                ),
+              Divider(height: 28, color: context.outlineColor),
+            ],
             ..._cuerpo(state),
           ],
         ),
       ),
     );
+  }
+
+  /// Cancela un puesto que el pasajero publicó, con confirmación. El taxista o
+  /// los pasajeros que se sumaron se enteran por el WS de la salida.
+  Future<void> _cancelarMiPuesto(PooledTripEntity trip) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('¿Cancelar este viaje?'),
+        content: Text(
+          trip.sinConductor
+              ? 'Todavía no lo ha tomado ningún taxista. Se retirará del '
+                  'tablero y nadie más podrá sumarse.'
+              : 'Ya lo tomó un taxista y puede haber pasajeros sumados. Se les '
+                  'avisará que lo cancelaste.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('No'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Sí, cancelar'),
+          ),
+        ],
+      ),
+    );
+    if (confirmar != true || !mounted) return;
+    final error =
+        await ref.read(pooledProvider.notifier).cancelarMiPuesto(trip.id);
+    if (!mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(error)));
+    } else {
+      HapticFeedback.mediumImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Viaje cancelado.')),
+      );
+    }
   }
 
   List<Widget> _cuerpo(PooledState state) {
@@ -468,6 +540,106 @@ class _TarjetaPuesto extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Un puesto que el PROPIO pasajero publicó, con su estado y el botón de
+/// cancelar. Separado de `_TarjetaPuesto` (que es para reservar el de otro):
+/// aquí no se reserva nada, se vigila lo publicado.
+class _TarjetaMiPuesto extends StatelessWidget {
+  const _TarjetaMiPuesto({required this.trip, required this.onCancelar});
+
+  final PooledTripEntity trip;
+  final VoidCallback onCancelar;
+
+  @override
+  Widget build(BuildContext context) {
+    final yaSalio = trip.status == PooledTripStatus.departed;
+    final ocupados =
+        (trip.totalSeats - trip.availableSeats).clamp(0, trip.totalSeats);
+
+    final IconData icono;
+    final String estado;
+    final Color color;
+    if (yaSalio) {
+      icono = Icons.directions_car_rounded;
+      estado = 'Ya salió · en camino';
+      color = _kUrbano;
+    } else if (trip.sinConductor) {
+      icono = Icons.hourglass_top_rounded;
+      estado = 'Esperando a que un taxista lo tome';
+      color = AppColors.warning;
+    } else {
+      icono = Icons.check_circle_rounded;
+      estado = 'Lo tomó ${trip.driverName}';
+      color = AppColors.success;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.surfaceColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            trip.tituloRuta,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: context.textPrimaryColor,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Icon(icono, size: 16, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  estado,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: color,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '$ocupados de ${trip.totalSeats} '
+            '${trip.totalSeats == 1 ? 'puesto ocupado' : 'puestos ocupados'} · '
+            'sale a las ${trip.departureTime.hour.toString().padLeft(2, '0')}:'
+            '${trip.departureTime.minute.toString().padLeft(2, '0')}',
+            style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+          ),
+          // Cancelar solo tiene sentido antes de que salga: una vez en camino,
+          // puede haber pasajeros a bordo.
+          if (!yaSalio) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onCancelar,
+                icon: const Icon(Icons.close_rounded, size: 18),
+                label: const Text('Cancelar viaje'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                  minimumSize: const Size(0, 44),
+                  textStyle: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

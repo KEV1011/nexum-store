@@ -25,10 +25,17 @@ class PooledState {
     this.isSearchingUrbano = false,
     this.buscoUrbano = false,
     this.urbanoError,
+    this.misPuestos = const [],
   });
 
   /// Puestos de taxi que salen pronto en la ciudad del pasajero.
   final List<PooledTripEntity> puestosUrbanos;
+
+  /// Los puestos urbanos que el propio pasajero PUBLICÓ y siguen activos.
+  /// Es lo que le dice si un taxista ya lo tomó o si alguien se sumó: antes,
+  /// tras publicar, no había forma de ver qué pasó con el viaje ni de
+  /// cancelarlo.
+  final List<PooledTripEntity> misPuestos;
 
   /// En qué ciudad se buscó, según el servidor. Null = no se pudo resolver
   /// (sin ubicación o fuera de cobertura), y la pantalla lo DICE en vez de
@@ -70,6 +77,7 @@ class PooledState {
     bool? isSearchingUrbano,
     bool? buscoUrbano,
     String? urbanoError,
+    List<PooledTripEntity>? misPuestos,
   }) =>
       PooledState(
         searchResults: searchResults ?? this.searchResults,
@@ -85,6 +93,7 @@ class PooledState {
         isSearchingUrbano: isSearchingUrbano ?? this.isSearchingUrbano,
         buscoUrbano: buscoUrbano ?? this.buscoUrbano,
         urbanoError: urbanoError,
+        misPuestos: misPuestos ?? this.misPuestos,
       );
 }
 
@@ -286,6 +295,44 @@ class PooledNotifier extends StateNotifier<PooledState> {
       return 'No pudimos publicar tu viaje. Revisa tu conexión.';
     } catch (_) {
       return 'No pudimos publicar tu viaje. Revisa tu conexión.';
+    }
+  }
+
+  /// Carga los puestos urbanos que el pasajero publicó y su estado actual.
+  ///
+  /// Best-effort: si falla, conserva lo que haya en vez de vaciar la sección
+  /// —un fallo de red no debe borrar de la vista un viaje que la persona sí
+  /// publicó—. La respuesta es un arreglo pelado (`{data: [...]}`), no el
+  /// `{trips,...}` de la búsqueda.
+  Future<void> cargarMisPuestos() async {
+    try {
+      final res =
+          await _dio.get<Map<String, dynamic>>('/client/pool/urbano/mios');
+      final list = (res.data?['data'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(PooledTripEntity.fromJson)
+          .toList();
+      state = state.copyWith(misPuestos: list);
+    } catch (_) {
+      // Se conserva lo anterior a propósito.
+    }
+  }
+
+  /// El pasajero cancela un puesto que ÉL publicó. `null` en éxito, mensaje de
+  /// error si falla. Recarga la lista al terminar para que el cambio se vea.
+  Future<String?> cancelarMiPuesto(String tripId) async {
+    try {
+      await _dio.post<Map<String, dynamic>>(
+        '/client/pool/urbano/${Uri.encodeComponent(tripId)}/cancel',
+      );
+      await cargarMisPuestos();
+      return null;
+    } on DioException catch (e) {
+      final body = e.response?.data;
+      if (body is Map && body['error'] is String) return body['error'] as String;
+      return 'No pudimos cancelar el viaje. Revisa tu conexión.';
+    } catch (_) {
+      return 'No pudimos cancelar el viaje. Revisa tu conexión.';
     }
   }
 

@@ -1771,6 +1771,56 @@ export async function getClientBookings(clientId: string): Promise<Array<PooledT
 }
 
 /**
+ * Los puestos urbanos que PUBLICÓ este pasajero y siguen activos.
+ *
+ * Es la respuesta a «publiqué mi viaje y no sé si alguien lo tomó»: por cada
+ * uno, el DTO dice si un taxista ya lo tomó (`sinConductor`), cuántos puestos
+ * se han sumado (`availableSeats` frente a `totalSeats`) y a qué hora sale.
+ * Solo los activos (OPEN/FULL/DEPARTED): los cancelados y completados no se
+ * listan —no hay nada que hacer con ellos—, igual que `getClientBookings` solo
+ * trae las reservas CONFIRMED.
+ */
+export async function listarMisPuestosUrbanos(userId: string): Promise<PooledTripDTO[]> {
+  const trips = await prisma.pooledTrip.findMany({
+    where: {
+      createdByUserId: userId,
+      kind: 'URBANO',
+      status: { in: ['OPEN', 'FULL', 'DEPARTED'] },
+    },
+    include: { bookings: { include: { seats: true } }, seatAssignments: true },
+    orderBy: { departureTime: 'asc' },
+  });
+  return trips.map((t) => _toDTO(t as DbPooledTrip, true));
+}
+
+/**
+ * El pasajero cancela un puesto urbano que ÉL publicó.
+ *
+ * Pertenencia por `createdByUserId`: nadie cancela el de otro (devuelve null,
+ * que la ruta traduce a 404). No se puede cancelar uno que ya salió
+ * (`DEPARTED`) ni uno terminado: quien se sumó podría ir a bordo. Al cancelar,
+ * `_notify` avisa a quien esté MIRANDO la salida —los pasajeros que se sumaron
+ * y el taxista que la tomó, si la tomó—, igual que la cancelación del conductor.
+ */
+export async function cancelarMiPuestoUrbano(
+  userId: string,
+  tripId: string,
+): Promise<PooledTripDTO | null> {
+  const t = await _fetchWithBookings(tripId);
+  if (!t || t.createdByUserId !== userId) return null;
+  if (t.status !== 'OPEN' && t.status !== 'FULL') return null;
+
+  const updated = await prisma.pooledTrip.update({
+    where: { id: tripId },
+    data: { status: 'CANCELLED' },
+    include: { bookings: { include: { seats: true } }, seatAssignments: true },
+  });
+  const dto = _toDTO(updated as DbPooledTrip, true);
+  _notify(tripId, dto);
+  return dto;
+}
+
+/**
  * Cuánto descontaría un código en esta salida, sin canjearlo.
  *
  * Existe para que el pasajero vea el precio con descuento ANTES de dar a
