@@ -441,13 +441,18 @@ export async function getClientErrandById(
 
 export async function getClientErrandRaw(
   errandId: string,
-): Promise<{ clientId: string; driverId: string | null } | undefined> {
+): Promise<{ clientId: string; driverId: string | null; abierto: boolean } | undefined> {
   const errand = await prisma.errand.findUnique({
     where: { id: errandId },
-    select: { userId: true, driverId: true },
+    select: { userId: true, driverId: true, status: true },
   });
   if (!errand) return undefined;
-  return { clientId: errand.userId, driverId: errand.driverId };
+  return {
+    clientId: errand.userId,
+    driverId: errand.driverId,
+    // Ni entregado ni cancelado: todavía hay alguien haciéndolo.
+    abierto: errand.status !== 'DELIVERED' && errand.status !== 'CANCELLED',
+  };
 }
 
 export function subscribeClientErrand(errandId: string, cb: ErrandCallback): () => void {

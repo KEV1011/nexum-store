@@ -161,6 +161,29 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
               _handleCancelled();
             }
           });
+        } else if (trip.request.isErrand) {
+          // LO MISMO PARA MANDADOS Y VIAJES, que no lo tenían: el servidor
+          // avisaba de la cancelación y esta pantalla no escuchaba. El
+          // conductor seguía camino de una recogida cancelada, el servidor ya
+          // lo había devuelto al despacho, y las ofertas nuevas le llegaban al
+          // inicio —que está DEBAJO de esta pantalla— sin que pudiera verlas.
+          _orderCancelSub =
+              DriverWsService().errandCancellations.listen((errandId) {
+            if (!mounted) return;
+            if (errandId == trip.request.id) {
+              AppSnackbar.showInfo(context, 'El cliente canceló el mandado.');
+              _handleCancelled();
+            }
+          });
+        } else {
+          _orderCancelSub =
+              DriverWsService().tripCancellations.listen((tripId) {
+            if (!mounted) return;
+            if (tripId == trip.request.id) {
+              AppSnackbar.showInfo(context, 'El pasajero canceló el viaje.');
+              _handleCancelled();
+            }
+          });
         }
 
         // El backend rechazó el PIN de custodia: el servicio NO avanzó de
@@ -247,22 +270,30 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     });
   }
 
-  void _aceptarEncadenado() {
+  Future<void> _aceptarEncadenado() async {
     final oferta = _ofertaSiguiente;
     if (oferta == null) return;
     _cuentaOferta?.cancel();
-    final ws = DriverWsService();
-    if (oferta.isOrder) {
-      ws.sendAcceptOrder(oferta.orderId!);
-    } else if (oferta.isErrand) {
-      ws.sendAcceptErrand(oferta.id);
-    } else {
-      ws.sendAccept(oferta.id);
+    setState(() => _ofertaSiguiente = null);
+    // Se encola SOLO si el servidor lo confirma: un «siguiente viaje» que no
+    // existe lo mandaría, al terminar este, a recoger a alguien que ya tiene
+    // otro conductor.
+    final motivo = await DriverWsService().aceptarOferta(
+      oferta.isOrder
+          ? 'order'
+          : oferta.isErrand
+              ? 'errand'
+              : 'trip',
+      oferta.isOrder ? oferta.orderId! : oferta.id,
+    );
+    if (!mounted) return;
+    if (motivo != null) {
+      AppSnackbar.showError(context, motivo);
+      return;
     }
     // NO se entra en él: todavía lleva un pasajero dentro. Queda en la cola y
     // la pantalla de resumen, al cerrar el viaje actual, ofrece ir directo.
     ref.read(siguienteViajeProvider.notifier).encolar(oferta);
-    setState(() => _ofertaSiguiente = null);
     AppSnackbar.showSuccess(
       context,
       'Aceptado. Entras en él al terminar este viaje.',

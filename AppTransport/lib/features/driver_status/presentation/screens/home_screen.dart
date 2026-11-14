@@ -574,6 +574,46 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     });
     _startCountdown(request);
+    _avisarSiElInicioEstaTapado();
+  }
+
+  /// LA OFERTA QUE LLEGA CON OTRA PANTALLA ENCIMA.
+  ///
+  /// La tarjeta de la oferta se pinta en el inicio. Si el conductor estaba en
+  /// Ganancias, en su perfil o en el chat de soporte, la alarma sonaba pero la
+  /// tarjeta quedaba DEBAJO de esa pantalla: tenía quince segundos para
+  /// adivinar qué sonaba y dónde. Lo normal era que el turno pasara al
+  /// siguiente y él creyera que «no le llegó nada».
+  ///
+  /// No se le quita la pantalla de delante —puede estar a mitad de algo—: se
+  /// le avisa encima de lo que tenga abierto, con un botón que lo trae aquí.
+  void _avisarSiElInicioEstaTapado() {
+    if (!mounted) return;
+    if (ModalRoute.of(context)?.isCurrent ?? true) return;
+    final router = GoRouter.of(context);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          duration: const Duration(seconds: AppConstants.tripRequestTimeoutSeconds),
+          backgroundColor: AppColors.textPrimary,
+          content: const Text(
+            'Tienes una solicitud nueva esperando tu respuesta.',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+          action: SnackBarAction(
+            label: 'VER',
+            textColor: Colors.white,
+            onPressed: () {
+              // Cierra lo que haya encima (pantallas, hojas, diálogos) hasta
+              // dejar el inicio a la vista. Con tope, por si acaso.
+              for (var i = 0; i < 12 && router.canPop(); i++) {
+                router.pop();
+              }
+            },
+          ),
+        ),
+      );
   }
 
   void _startCountdown(TripRequestEntity request) {
@@ -598,14 +638,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _countdownTimer?.cancel();
     NotificationService().stopTripRequestAlarm();
     setState(() => _state = _state.copyWith(clearPending: true));
-    if (DriverWsService().isConnected) {
-      if (request.isOrder) {
-        DriverWsService().sendAcceptOrder(request.orderId!);
-      } else if (request.isErrand) {
-        DriverWsService().sendAcceptErrand(request.id);
-      } else {
-        DriverWsService().sendAccept(request.id);
-      }
+
+    // NO se entra al servicio hasta que el servidor diga que sí. Antes se
+    // entraba al tocar «Aceptar» sin esperar a nadie, y si el servidor decía
+    // que no —el turno ya había vencido, otro la tomó, no había conexión y el
+    // mensaje ni salió— el conductor se iba a una recogida que no era suya.
+    final motivo = await DriverWsService().aceptarOferta(
+      request.isOrder
+          ? 'order'
+          : request.isErrand
+              ? 'errand'
+              : 'trip',
+      request.isOrder ? request.orderId! : request.id,
+    );
+    if (!mounted) return;
+    if (motivo != null) {
+      AppSnackbar.showError(context, motivo);
+      return;
     }
     await ref.read(activeTripProvider.notifier).beginTrip(request);
     if (mounted) context.push('/active-trip');

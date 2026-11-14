@@ -33,8 +33,11 @@ import {
   startErrandMatchingCycle,
   startOrderMatchingCycle,
   rendirBusqueda,
+  busquedaEnCurso,
 } from './matching.service';
-import { startIntercityMatching, rendirBusquedaIntercity } from './intercity.service';
+import {
+  startIntercityMatching, rendirBusquedaIntercity, busquedaIntercityEnCurso,
+} from './intercity.service';
 import { INTERCITY_CITY_COORDS } from '../config/constants';
 
 const PAMPLONA = INTERCITY_CITY_COORDS.pamplona;
@@ -73,11 +76,38 @@ export function esDemasiadoViejo(creadoEn: Date, ahora: Date = new Date()): bool
 }
 
 /**
+ * Desde CUÁNDO lleva este servicio necesitando conductor: la más reciente de
+ * las fechas que se le pasen.
+ *
+ * POR QUÉ NO ES LA DE CREACIÓN. El barrido medía la edad con `createdAt`, y hay
+ * tres servicios para los que eso es mentira:
+ *
+ *  · un PEDIDO se crea cuando el cliente lo pide, pero el restaurante lo marca
+ *    «listo» veinte o cuarenta minutos después — y es ENTONCES cuando hace
+ *    falta el repartidor. Con media hora de cocina, el barrido lo daba por
+ *    viejo y le cortaba la búsqueda que «listo» acababa de arrancar: el pedido
+ *    en el mostrador, repartidores conectados, y nadie buscando. Es el reporte
+ *    «le dan listo y no le llega a ningún repartidor»;
+ *  · un viaje RESERVADO se creó ayer y sale a buscar hoy, quince minutos antes
+ *    de la hora: nacía «viejo» y el barrido lo cancelaba por falta de conductor
+ *    antes de que acabara de buscarlo;
+ *  · una ENCOMIENDA llega a la otra ciudad al día siguiente de crearse.
+ */
+export function desdeCuandoBusca(...fechas: Array<Date | null | undefined>): Date {
+  let ultima = 0;
+  for (const f of fechas) {
+    const t = f?.getTime();
+    if (t != null && Number.isFinite(t) && t > ultima) ultima = t;
+  }
+  return new Date(ultima);
+}
+
+/**
  * Revisa los servicios que quedaron buscando conductor y los desatasca.
  *
- * Es idempotente y seguro de repetir: si un ciclo sigue vivo en memoria, volver
- * a arrancarlo solo adelanta la siguiente ronda de ofertas; y el propio ciclo
- * comprueba en la base que el servicio siga sin conductor antes de ofrecer nada.
+ * Es idempotente y seguro de repetir: lo que sigue buscando en memoria se deja
+ * como está (`busquedaEnCurso`), y el propio ciclo comprueba en la base que el
+ * servicio siga sin conductor antes de ofrecer nada.
  */
 export async function rescatarDespacho(): Promise<ResumenRescate> {
   const r = _vacio();
@@ -91,11 +121,16 @@ export async function rescatarDespacho(): Promise<ResumenRescate> {
   try {
     const viajes = await prisma.trip.findMany({
       where: { status: 'SEARCHING', driverId: null },
-      select: { id: true, createdAt: true, originLat: true, originLng: true },
+      select: {
+        id: true, createdAt: true, scheduledFor: true, originLat: true, originLng: true,
+      },
       take: 200,
     });
     for (const v of viajes) {
-      if (esDemasiadoViejo(v.createdAt, ahora)) {
+      // Una búsqueda que sigue viva en memoria no se toca: ni se le monta otro
+      // ciclo encima ni se le cortan los reintentos.
+      if (busquedaEnCurso('trip', v.id)) continue;
+      if (esDemasiadoViejo(desdeCuandoBusca(v.createdAt, v.scheduledFor), ahora)) {
         rendirBusqueda('trip', v.id);
         _anota(r, 'viaje', 'cerrados');
       } else {
@@ -115,6 +150,9 @@ export async function rescatarDespacho(): Promise<ResumenRescate> {
       take: 200,
     });
     for (const m of mandados) {
+      // «Volver a buscar» arranca diez minutos de reintentos sobre un mandado
+      // que puede tener horas: mientras sigan vivos, se respetan.
+      if (busquedaEnCurso('errand', m.id)) continue;
       if (esDemasiadoViejo(m.createdAt, ahora)) {
         rendirBusqueda('errand', m.id);
         _anota(r, 'mandado', 'cerrados');
@@ -152,11 +190,12 @@ export async function rescatarDespacho(): Promise<ResumenRescate> {
         // conductor, los volvía a ofrecer para siempre.
         mode: 'DELIVERY',
       },
-      select: { id: true, createdAt: true },
+      select: { id: true, createdAt: true, acceptedAt: true, readyAt: true, hubAt: true },
       take: 200,
     });
     for (const p of pedidos) {
-      if (esDemasiadoViejo(p.createdAt, ahora)) {
+      if (busquedaEnCurso('order', p.id)) continue;
+      if (esDemasiadoViejo(desdeCuandoBusca(p.createdAt, p.acceptedAt, p.readyAt, p.hubAt), ahora)) {
         rendirBusqueda('order', p.id);
         _anota(r, 'pedido', 'cerrados');
       } else {
@@ -176,6 +215,7 @@ export async function rescatarDespacho(): Promise<ResumenRescate> {
       take: 200,
     });
     for (const b of reservas) {
+      if (busquedaIntercityEnCurso(b.id)) continue;
       if (esDemasiadoViejo(b.createdAt, ahora)) {
         rendirBusquedaIntercity(b.id);
         _anota(r, 'intermunicipal', 'cerrados');

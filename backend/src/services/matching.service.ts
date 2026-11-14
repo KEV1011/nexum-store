@@ -48,7 +48,7 @@ export async function updateDriverGeo(
   lng: number,
   /** Cuándo tomó el teléfono la lectura (ms). Las apps viejas no lo mandan. */
   tomadoEn: number | null = null,
-): Promise<void> {
+): Promise<DriverStatus | null> {
   // Antifraude: lee la posición previa y evalúa el salto (velocidad imposible)
   // antes de sobrescribirla — marca GPS falso sin bloquear jamás el fix.
   const prev = await prisma.driver.findUnique({
@@ -75,6 +75,10 @@ export async function updateDriverGeo(
   // Seguridad operativa (geocerca de destino, detención, desvío): pasivo y
   // best-effort — jamás afecta el fix ni el servicio.
   void onDriverHeartbeat(driverId, lat, lng);
+
+  // El estado que tenía ANTES de este latido. Lo usa el socket para curar al
+  // conductor que late estando marcado fuera de línea (ver ws.handler).
+  return prev?.status ?? null;
 }
 
 /**
@@ -114,6 +118,20 @@ async function _curarEnViajeSinServicio(driverId: string): Promise<void> {
 // ─── Phase 2: geospatial nearest-driver matching ──────────────────────────────
 
 const OFFER_TIMEOUT_MS = 15_000;
+
+/**
+ * Lo que el servidor espera DE MÁS antes de pasar la oferta al siguiente.
+ *
+ * La app enseña una cuenta atrás de 15 s que arranca cuando le LLEGA la oferta,
+ * y el servidor contaba sus 15 s desde que la MANDÓ. Con la red de un teléfono
+ * en la calle, quien aceptaba en los últimos segundos llegaba tarde por
+ * décimas: el servidor ya había pasado el turno, contestaba «ya no está
+ * disponible» y la app —que no esperaba respuesta— entraba igual al viaje. Un
+ * servicio fantasma: el conductor camino de la recogida de algo que no era
+ * suyo, y el cliente todavía «buscando».
+ */
+const OFFER_GRACE_MS = Number(process.env['OFFER_GRACE_MS'] ?? 4_000);
+const OFFER_ESPERA_MS = OFFER_TIMEOUT_MS + OFFER_GRACE_MS;
 const SEARCH_RADIUS_M = 5_000;   // 5 km initial radius
 const MAX_CANDIDATES = 5;         // try up to 5 drivers before giving up
 const GEO_FRESHNESS_S = 120;      // ignore drivers last seen > 2 min ago
@@ -185,6 +203,89 @@ export function cancelSearchRetry(key: string): void {
     clearTimeout(t);
     searchRetries.delete(key);
   }
+}
+
+// ─── A quién se le ofreció qué, hace poco ────────────────────────────────────
+//
+// Sirve para una sola cosa: aceptar una oferta que ya NO está viva en memoria.
+// Pasa cuando el conductor toca «Aceptar» justo después de que venció su turno
+// y no había nadie más en la lista: el servicio sigue libre, él es el único que
+// lo quiere, y rechazarlo lo dejaba otros treinta segundos sin nadie.
+//
+// Solo vale para quien de verdad recibió ESA oferta hace poco: sin esto,
+// cualquiera con un id podría tomar un servicio saltándose el tipo de vehículo,
+// sus preferencias y los bloqueos, que se miraron al armar la lista.
+const OFERTA_TARDIA_MS = 90_000;
+const _ofrecidoA = new Map<string, Map<string, number>>();
+
+type ClaseServicio = 'trip' | 'errand' | 'order';
+
+function _anotarOferta(kind: ClaseServicio, id: string, driverId: string): void {
+  const key = `${kind}:${id}`;
+  let m = _ofrecidoA.get(key);
+  if (!m) { m = new Map(); _ofrecidoA.set(key, m); }
+  m.set(driverId, Date.now());
+  // Poda barata: no hace falta un temporizador para un mapa tan pequeño.
+  if (_ofrecidoA.size > 500) {
+    const corte = Date.now() - OFERTA_TARDIA_MS;
+    for (const [k, v] of _ofrecidoA) {
+      for (const [d, t] of v) if (t < corte) v.delete(d);
+      if (v.size === 0) _ofrecidoA.delete(k);
+    }
+  }
+}
+
+function _olvidarOfertas(kind: ClaseServicio, id: string): void {
+  _ofrecidoA.delete(`${kind}:${id}`);
+}
+
+/**
+ * ¿Puede este conductor aceptar un servicio cuya oferta ya venció?
+ *
+ * Sí, si se cumplen las tres: nadie más tiene la oferta viva en este momento,
+ * a él se le ofreció hace poco, y sigue libre (EN LÍNEA). Que el servicio siga
+ * sin dueño lo decide después la escritura atómica en la base, no esto.
+ */
+export async function aceptacionTardia(
+  kind: ClaseServicio,
+  id: string,
+  driverId: string,
+): Promise<boolean> {
+  const viva =
+    kind === 'trip' ? activeOffers.has(id)
+    : kind === 'errand' ? activeErrandOffers.has(id)
+    : activeOrderOffers.has(id);
+  if (viva) return false;
+  const cuando = _ofrecidoA.get(`${kind}:${id}`)?.get(driverId);
+  if (cuando == null || Date.now() - cuando > OFERTA_TARDIA_MS) return false;
+  const d = await prisma.driver.findUnique({ where: { id: driverId }, select: { status: true } });
+  if (d?.status !== 'ONLINE') return false;
+  // Se la lleva él: la insistencia programada ya no hace falta.
+  cancelSearchRetry(`${kind}:${id}`);
+  return true;
+}
+
+/**
+ * ¿Hay una búsqueda VIVA en memoria para este servicio? Es decir: alguien
+ * tiene la oferta delante ahora mismo, o hay un reintento programado.
+ *
+ * La usa el barrido de rescate. Sin esta pregunta, el barrido reanudaba —o
+ * cerraba— búsquedas que estaban funcionando: arrancaba un segundo ciclo
+ * encima del primero (la misma oferta dos veces al mismo conductor, con dos
+ * relojes pisándose) o cortaba los reintentos de un pedido solo porque se
+ * había CREADO hacía más de media hora, que es lo normal en un restaurante.
+ */
+export function busquedaEnCurso(kind: ClaseServicio, id: string): boolean {
+  const viva =
+    kind === 'trip' ? activeOffers.has(id)
+    : kind === 'errand' ? activeErrandOffers.has(id)
+    : activeOrderOffers.has(id);
+  return viva || searchRetries.has(`${kind}:${id}`);
+}
+
+/** Lo mismo para las claves que no son de este archivo (intermunicipal). */
+export function reintentoPendiente(key: string): boolean {
+  return searchRetries.has(key);
 }
 
 type NearbyDriver = {
@@ -698,7 +799,7 @@ async function _offerToCandidate(
 
   const timeout = setTimeout(() => {
     void onDriverDeclineOrTimeout(tripId);
-  }, OFFER_TIMEOUT_MS);
+  }, OFFER_ESPERA_MS);
 
   activeOffers.set(tripId, {
     tripId,
@@ -711,6 +812,7 @@ async function _offerToCandidate(
     attempt,
   });
 
+  _anotarOferta('trip', tripId, candidate.driverId);
   _sendToDriver?.(candidate.driverId, {
     type: 'trip_request',
     trip: dto,
@@ -759,10 +861,13 @@ export async function onDriverDeclineOrTimeout(
  */
 export async function onDriverAccept(tripId: string, driverId: string): Promise<boolean> {
   const state = activeOffers.get(tripId);
-  if (!state || state.currentDriverId !== driverId) return false;
-
-  clearTimeout(state.timeout);
-  activeOffers.delete(tripId);
+  if (state && state.currentDriverId === driverId) {
+    clearTimeout(state.timeout);
+    activeOffers.delete(tripId);
+  } else if (!(await aceptacionTardia('trip', tripId, driverId))) {
+    // Otro tiene la oferta delante, o a este nunca se le ofreció.
+    return false;
+  }
   // Alguien lo tomó: se corta la insistencia. Sin esto, el temporizador seguía
   // vivo y volvía a barrer un viaje que ya tiene conductor.
   cancelSearchRetry(`trip:${tripId}`);
@@ -793,6 +898,7 @@ export async function onDriverAccept(tripId: string, driverId: string): Promise<
   });
 
   if (!updated) return false;
+  _olvidarOfertas('trip', tripId);
 
   await prisma.driver.update({
     where: { id: driverId },
@@ -979,7 +1085,7 @@ async function _offerErrandToCandidate(
 
   const timeout = setTimeout(() => {
     void onErrandDeclineOrTimeout(errandId);
-  }, OFFER_TIMEOUT_MS);
+  }, OFFER_ESPERA_MS);
 
   activeErrandOffers.set(errandId, {
     errandId,
@@ -990,6 +1096,7 @@ async function _offerErrandToCandidate(
     retry,
   });
 
+  _anotarOferta('errand', errandId, candidate.driverId);
   _sendToDriver?.(candidate.driverId, {
     type: 'errand_request',
     errand: info.dto,
@@ -1036,6 +1143,7 @@ export function onErrandAccept(errandId: string, driverId: string): boolean {
   clearTimeout(state.timeout);
   activeErrandOffers.delete(errandId);
   cancelSearchRetry(`errand:${errandId}`);
+  _olvidarOfertas('errand', errandId);
   return true;
 }
 
@@ -1233,7 +1341,7 @@ async function _offerOrderToCandidate(
 
   const timeout = setTimeout(() => {
     void onOrderDeclineOrTimeout(orderId);
-  }, OFFER_TIMEOUT_MS);
+  }, OFFER_ESPERA_MS);
 
   activeOrderOffers.set(orderId, {
     orderId,
@@ -1244,6 +1352,7 @@ async function _offerOrderToCandidate(
     attempt,
   });
 
+  _anotarOferta('order', orderId, candidate.driverId);
   _sendToDriver?.(candidate.driverId, {
     type: 'order_request',
     order: info.dto,
@@ -1283,5 +1392,6 @@ export function onOrderAccept(orderId: string, driverId: string): boolean {
   clearTimeout(state.timeout);
   activeOrderOffers.delete(orderId);
   cancelSearchRetry(`order:${orderId}`);
+  _olvidarOfertas('order', orderId);
   return true;
 }
