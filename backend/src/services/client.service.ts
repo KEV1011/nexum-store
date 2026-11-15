@@ -711,7 +711,15 @@ export async function markOrderReadyByBusiness(
 
   const updated = await prisma.order.update({
     where: { id: orderId },
-    data: { readyAt: new Date() },
+    data: {
+      readyAt: new Date(),
+      // Sin repartidor todavía: «listo» abre una búsqueda NUEVA, así que el
+      // aviso de «no encontramos repartidor» tiene que poder salir otra vez.
+      // La marca es de una sola vez, y si se quedaba puesta de la primera
+      // búsqueda, la segunda se rendía en silencio: ni el cliente ni la
+      // cocina se enteraban de que el pedido seguía en el mostrador.
+      ...(existing.driverId == null ? { noDriverNotifiedAt: null } : {}),
+    },
     include: { lines: true, business: { select: { name: true, menuCode: true } } },
   });
 

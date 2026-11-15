@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'package:nexum_driver/core/utils/rumbo_vehiculo.dart';
+import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
@@ -160,6 +161,29 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
               _handleCancelled();
             }
           });
+        } else if (trip.request.isErrand) {
+          // LO MISMO PARA MANDADOS Y VIAJES, que no lo tenían: el servidor
+          // avisaba de la cancelación y esta pantalla no escuchaba. El
+          // conductor seguía camino de una recogida cancelada, el servidor ya
+          // lo había devuelto al despacho, y las ofertas nuevas le llegaban al
+          // inicio —que está DEBAJO de esta pantalla— sin que pudiera verlas.
+          _orderCancelSub =
+              DriverWsService().errandCancellations.listen((errandId) {
+            if (!mounted) return;
+            if (errandId == trip.request.id) {
+              AppSnackbar.showInfo(context, 'El cliente canceló el mandado.');
+              _handleCancelled();
+            }
+          });
+        } else {
+          _orderCancelSub =
+              DriverWsService().tripCancellations.listen((tripId) {
+            if (!mounted) return;
+            if (tripId == trip.request.id) {
+              AppSnackbar.showInfo(context, 'El pasajero canceló el viaje.');
+              _handleCancelled();
+            }
+          });
         }
 
         // El backend rechazó el PIN de custodia: el servicio NO avanzó de
@@ -246,22 +270,30 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     });
   }
 
-  void _aceptarEncadenado() {
+  Future<void> _aceptarEncadenado() async {
     final oferta = _ofertaSiguiente;
     if (oferta == null) return;
     _cuentaOferta?.cancel();
-    final ws = DriverWsService();
-    if (oferta.isOrder) {
-      ws.sendAcceptOrder(oferta.orderId!);
-    } else if (oferta.isErrand) {
-      ws.sendAcceptErrand(oferta.id);
-    } else {
-      ws.sendAccept(oferta.id);
+    setState(() => _ofertaSiguiente = null);
+    // Se encola SOLO si el servidor lo confirma: un «siguiente viaje» que no
+    // existe lo mandaría, al terminar este, a recoger a alguien que ya tiene
+    // otro conductor.
+    final motivo = await DriverWsService().aceptarOferta(
+      oferta.isOrder
+          ? 'order'
+          : oferta.isErrand
+              ? 'errand'
+              : 'trip',
+      oferta.isOrder ? oferta.orderId! : oferta.id,
+    );
+    if (!mounted) return;
+    if (motivo != null) {
+      AppSnackbar.showError(context, motivo);
+      return;
     }
     // NO se entra en él: todavía lleva un pasajero dentro. Queda en la cola y
     // la pantalla de resumen, al cerrar el viaje actual, ofrece ir directo.
     ref.read(siguienteViajeProvider.notifier).encolar(oferta);
-    setState(() => _ofertaSiguiente = null);
     AppSnackbar.showSuccess(
       context,
       'Aceptado. Entras en él al terminar este viaje.',
@@ -1321,7 +1353,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     // mandado), no por el modo del conductor: desde la unificación recibe
     // entregas aunque esté en modo Pasajeros (antes se saltaba la foto).
     final isDelivery = trip.request.isDelivery;
-    return switch (trip.state) {
+    final tarjeta = switch (trip.state) {
       ActiveTripState.toPickup => GoingToPassengerCard(
           trip: trip,
           routeProgress: _routeProgress,
@@ -1342,6 +1374,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           onFinishTrip: _isLoading ? null : _handleFinishTrip,
         ),
     };
+    return _PanelInferior(child: tarjeta);
   }
 
   // Deriva el modo de trabajo del TIPO REAL del viaje (no del selector del
@@ -1792,6 +1825,44 @@ class _BuscandoSenalGps extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// LA TARJETA DEL VIAJE NO CABÍA EN TODOS LOS TELÉFONOS.
+///
+/// Las tres tarjetas (camino a recoger, esperando, en curso) son columnas
+/// fijas pensadas para un teléfono alto. En uno bajo, o con la letra del
+/// sistema agrandada, o con notas y paradas, la tarjeta pasaba del alto
+/// disponible y se recortaba por arriba; y en los Android de borde a borde la
+/// barra de navegación del sistema iba encima del botón final («Llegué»,
+/// «Iniciar viaje», «Finalizar»). Aquí se le pone techo —lo que no quepa se
+/// desplaza dentro— y se reserva el alto de la barra del sistema con el mismo
+/// color de la tarjeta, para que debajo no asome una franja de mapa.
+class _PanelInferior extends StatelessWidget {
+  const _PanelInferior({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: media.size.height * 0.72),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            child,
+            if (media.viewPadding.bottom > 0)
+              ColoredBox(
+                color: context.surfaceColor,
+                child: SizedBox(height: media.viewPadding.bottom),
+              ),
+          ],
         ),
       ),
     );

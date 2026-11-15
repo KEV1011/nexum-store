@@ -843,7 +843,7 @@ function VistasCatalogo({
             role="tab"
             aria-selected={activa}
             onClick={() => onVista(o.id)}
-            className={`min-h-[44px] flex-1 whitespace-nowrap rounded-xl px-4 text-sm font-semibold transition-colors ${
+            className={`min-h-[44px] flex-1 whitespace-nowrap rounded-xl px-2.5 text-sm sm:px-4 font-semibold transition-colors ${
               activa
                 ? 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200'
                 : 'text-slate-500 hover:text-slate-800'

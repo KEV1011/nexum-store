@@ -29,7 +29,7 @@ import {
   INTERCITY_CITY_COORDS,
 } from '../config/constants';
 import { recordCompletedTrip } from './earnings.service';
-import { scheduleSearchRetry, cancelSearchRetry } from './matching.service';
+import { scheduleSearchRetry, cancelSearchRetry, reintentoPendiente } from './matching.service';
 import { coordsOf, getMunicipality } from './municipality.service';
 import { tasaComision } from './comision.service';
 
@@ -365,6 +365,14 @@ function _retryOrSurrenderIntercity(bookingId: string, attempt: number): void {
     void startIntercityMatching(bookingId, attempt + 1);
   });
   if (!sigue) void _notifyIntercityNoDriver(bookingId);
+}
+
+/**
+ * ¿Sigue viva en memoria la búsqueda de esta reserva? La usa el barrido de
+ * rescate para no reanudar ni cerrar lo que está funcionando.
+ */
+export function busquedaIntercityEnCurso(bookingId: string): boolean {
+  return intercityOffers.has(bookingId) || reintentoPendiente(`intercity:${bookingId}`);
 }
 
 /**

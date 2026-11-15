@@ -8,6 +8,7 @@ import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/domain/work_mode.dart';
 import 'package:nexum_driver/features/intercity/domain/entities/intercity_request_entity.dart';
+import 'package:nexum_driver/shared/services/confirmacion_oferta.dart';
 import 'package:nexum_driver/shared/services/ws_service.dart' show IntercityLifecycleEvent;
 
 /// Clave con la que el despacho marca una oferta como ENCADENADA: le llega al
@@ -70,6 +71,15 @@ class DriverWsService {
   // suscripciones activas (ride/chat), por clave '<tipo>:<id>'.
   bool _registeredForRides = false;
   final Map<String, Map<String, dynamic>> _activeSubs = {};
+
+  // «Aceptar» esperando el sí o el no del servidor, por clave `tipo:id`.
+  final Map<String, Completer<String?>> _aceptaciones = {};
+
+  // Latido propio: detecta el socket que parece abierto y está muerto.
+  Timer? _latido;
+  DateTime _ultimoMensaje = DateTime.now();
+  static const _cadaCuantoLate = Duration(seconds: 20);
+  static const _silencioMaximo = Duration(seconds: 50);
 
   final _tripCtrl = StreamController<Map<String, dynamic>>.broadcast();
   final _errandCtrl = StreamController<Map<String, dynamic>>.broadcast();
@@ -244,6 +254,7 @@ class DriverWsService {
       if (authenticated) {
         _reconnectAttempts = 0;
         _replayState();
+        _arrancarLatido();
       } else {
         _handleDrop();
       }
@@ -263,6 +274,10 @@ class DriverWsService {
   void _handleDrop() {
     if (_authCompleter != null && !_authCompleter!.isCompleted) {
       _authCompleter!.complete(false);
+    }
+    // Lo que estuviera esperando un «sí» ya no lo va a recibir por este socket.
+    for (final c in _aceptaciones.values.toList()) {
+      if (!c.isCompleted) c.complete(kSinConexionParaAceptar);
     }
     _cleanup();
     if (_shouldReconnect) _scheduleReconnect();
@@ -301,7 +316,34 @@ class DriverWsService {
     _cleanup();
   }
 
+  /// EL SOCKET QUE PARECE VIVO Y NO LO ESTÁ.
+  ///
+  /// Un teléfono que cambia de red (wifi ↔ datos, un túnel, un sótano) se
+  /// queda con un socket que el sistema da por abierto pero por el que ya no
+  /// pasa nada. La app seguía diciendo «En línea», mandaba su posición a la
+  /// nada y no recibía ninguna oferta; el servidor, al no saber de él, lo
+  /// sacaba del despacho a los dos minutos. Podía pasar un cuarto de hora
+  /// hasta que el sistema avisara del corte.
+  ///
+  /// Se pregunta cada veinte segundos (`ping` → `pong`). Si en cincuenta no ha
+  /// llegado NADA —ni el pong ni ningún otro mensaje—, el socket se da por
+  /// muerto y se abre otro, que es lo que ya hacía la reconexión.
+  void _arrancarLatido() {
+    _latido?.cancel();
+    _ultimoMensaje = DateTime.now();
+    _latido = Timer.periodic(_cadaCuantoLate, (_) {
+      if (_channel == null) return;
+      if (DateTime.now().difference(_ultimoMensaje) > _silencioMaximo) {
+        _handleDrop();
+        return;
+      }
+      _send({'type': 'ping'});
+    });
+  }
+
   void _cleanup() {
+    _latido?.cancel();
+    _latido = null;
     _sub?.cancel();
     _channel?.sink.close();
     _channel = null;
@@ -310,6 +352,35 @@ class DriverWsService {
   }
 
   // ── send helpers ──────────────────────────────────────────────────────────
+
+  /// Acepta una oferta y ESPERA la respuesta del servidor.
+  ///
+  /// [tipo] es `trip`, `errand` u `order`. Devuelve null si el servidor la
+  /// confirmó, o el motivo —listo para enseñar— si no: sin conexión, sin
+  /// respuesta, o «ya no está disponible». Quien llama NO debe entrar al
+  /// servicio si esto devuelve un motivo: ver `confirmacion_oferta.dart`.
+  Future<String?> aceptarOferta(String tipo, String id) async {
+    if (_channel == null) return kSinConexionParaAceptar;
+    final clave = claveDeOferta(tipo, id);
+    final espera = Completer<String?>();
+    _aceptaciones[clave] = espera;
+    switch (tipo) {
+      case 'order':
+        sendAcceptOrder(id);
+      case 'errand':
+        sendAcceptErrand(id);
+      default:
+        sendAccept(id);
+    }
+    try {
+      return await espera.future.timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => kSinRespuestaAlAceptar,
+      );
+    } finally {
+      _aceptaciones.remove(clave);
+    }
+  }
 
   /// Accept a trip request.
   void sendAccept(String tripId) =>
@@ -520,6 +591,17 @@ class DriverWsService {
     try {
       final msg = jsonDecode(raw as String) as Map<String, dynamic>;
       final type = msg['type'] as String?;
+      // Cualquier mensaje prueba que el socket sigue vivo (ver _arrancarLatido).
+      _ultimoMensaje = DateTime.now();
+
+      // ¿Es el sí o el no a un «Aceptar» que está esperando?
+      if (_aceptaciones.isNotEmpty) {
+        final r = leerRespuestaDeAceptacion(msg, _aceptaciones.keys.toSet());
+        final espera = r == null ? null : _aceptaciones[r.clave];
+        if (r != null && espera != null && !espera.isCompleted) {
+          espera.complete(r.motivo);
+        }
+      }
 
       switch (type) {
         case 'auth_ok':

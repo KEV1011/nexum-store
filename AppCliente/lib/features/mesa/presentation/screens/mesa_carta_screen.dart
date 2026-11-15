@@ -6,6 +6,8 @@
 /// servidor por el modo del pedido, no esta pantalla.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -15,6 +17,7 @@ import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/businesses/domain/entities/business_entity.dart';
+import 'package:nexum_client/features/businesses/presentation/widgets/barra_secciones.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/product_options_sheet.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/product_tile.dart';
 import 'package:nexum_client/features/mesa/data/mesa_api.dart';
@@ -39,7 +42,13 @@ class MesaCartaScreen extends ConsumerStatefulWidget {
   ConsumerState<MesaCartaScreen> createState() => _MesaCartaScreenState();
 }
 
-class _MesaCartaScreenState extends ConsumerState<MesaCartaScreen> {
+class _MesaCartaScreenState extends ConsumerState<MesaCartaScreen>
+    with SaltoASecciones<MesaCartaScreen> {
+  /// La cabecera de esta pantalla es la `AppBar` del `Scaffold`, que va FUERA
+  /// del desplazable: encima de la carta solo queda fijada la barra.
+  @override
+  double get altoFijadoArriba => kAltoBarraSecciones;
+
   CartaDeMesa? _carta;
   String? _error;
   List<LineaMesa> _lineas = const [];
@@ -201,54 +210,85 @@ class _MesaCartaScreenState extends ConsumerState<MesaCartaScreen> {
       porSeccion.putIfAbsent(p.category, () => []).add(p);
     }
     final sinMesas = carta.mesas.isEmpty && !widget.paraLlevar;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(
-        AppConstants.spacingM,
-        AppConstants.spacingS,
-        AppConstants.spacingM,
-        AppConstants.spacingXL,
-      ),
-      children: [
-        _Destino(
-          paraLlevar: widget.paraLlevar,
-          mesa: _mesa,
-          onCambiar: carta.mesas.isEmpty || widget.paraLlevar ? null : _elegirMesa,
+    // El orden de la barra es EXACTAMENTE el orden en que se pintan las
+    // secciones: si fueran dos listas, un chip llevaría a otra sección.
+    ordenSecciones = porSeccion.keys.toList();
+    const margen = AppConstants.spacingM;
+    return CustomScrollView(
+      controller: scrollCarta,
+      slivers: [
+        SliverPadding(
+          padding: const EdgeInsets.fromLTRB(margen, AppConstants.spacingS, margen, 0),
+          sliver: SliverList.list(
+            children: [
+              _Destino(
+                paraLlevar: widget.paraLlevar,
+                mesa: _mesa,
+                onCambiar: carta.mesas.isEmpty || widget.paraLlevar ? null : _elegirMesa,
+              ),
+              if (!negocio.isOpen)
+                const _Aviso('El local no está recibiendo pedidos ahora. Pídele al mesero.'),
+              if (sinMesas)
+                const _Aviso('Este local aún no tiene activados los pedidos desde la mesa.'),
+            ],
+          ),
         ),
-        if (!negocio.isOpen)
-          const _Aviso('El local no está recibiendo pedidos ahora. Pídele al mesero.'),
-        if (sinMesas)
-          const _Aviso('Este local aún no tiene activados los pedidos desde la mesa.'),
-        for (final entrada in porSeccion.entries) ...[
-          Padding(
-            padding: const EdgeInsets.only(
-              top: AppConstants.spacingL,
-              bottom: AppConstants.spacingS,
+        // La misma barra de la carta del local: con una sola sección no
+        // ordena nada y sobra.
+        if (ordenSecciones.length >= 2)
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: BarraSeccionesDelegate(
+              secciones: ordenSecciones,
+              activa: seccionActiva,
+              onSeleccion: (s) => unawaited(irASeccion(s)),
             ),
-            child: Text(
-              entrada.key,
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w800,
-                color: context.textPrimaryColor,
+          ),
+        for (final entrada in porSeccion.entries) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              key: claveDeSeccion(entrada.key),
+              padding: const EdgeInsets.fromLTRB(
+                margen,
+                AppConstants.spacingL,
+                margen,
+                AppConstants.spacingS,
+              ),
+              child: Text(
+                entrada.key,
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
               ),
             ),
           ),
-          for (final p in entrada.value)
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppConstants.spacingS),
-              child: ProductTile(
-                product: p,
-                // Con opciones cada variante es su propia línea: el contador
-                // del tile sumaría platos distintos.
-                quantity: p.hasOptions ? 0 : cantidadDe(_lineas, p.id),
-                onAdd: () {
-                  if (!negocio.isOpen || sinMesas) return;
-                  _agregar(p);
-                },
-                onRemove: () => setState(() => _lineas = quitarUno(_lineas, p.id)),
-              ),
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: margen),
+            sliver: SliverList.builder(
+              itemCount: entrada.value.length,
+              itemBuilder: (context, i) {
+                final p = entrada.value[i];
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: AppConstants.spacingS),
+                  child: ProductTile(
+                    product: p,
+                    // Con opciones cada variante es su propia línea: el
+                    // contador del tile sumaría platos distintos.
+                    quantity: p.hasOptions ? 0 : cantidadDe(_lineas, p.id),
+                    onAdd: () {
+                      if (!negocio.isOpen || sinMesas) return;
+                      _agregar(p);
+                    },
+                    onRemove: () => setState(() => _lineas = quitarUno(_lineas, p.id)),
+                  ),
+                );
+              },
             ),
+          ),
         ],
+        const SliverToBoxAdapter(child: SizedBox(height: AppConstants.spacingXL)),
       ],
     );
   }

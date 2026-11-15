@@ -227,6 +227,9 @@ class _RequestCard extends StatelessWidget {
                 OutlinedButton(
                   onPressed: () => _showCounter(context),
                   style: OutlinedButton.styleFrom(
+                    // Ancho finito: el tema pone ancho mínimo infinito y,
+                    // dentro de esta fila, dejaba sin ancho a «Aceptar».
+                    minimumSize: const Size(0, kMinInteractiveDimension),
                     foregroundColor: AppColors.primaryDim,
                     side: const BorderSide(color: AppColors.primaryDim),
                   ),

@@ -90,6 +90,7 @@ import {
   onErrandAccept,
   onErrandDeclineOrTimeout,
   onOrderAccept,
+  aceptacionTardia,
   onOrderDeclineOrTimeout,
 } from '../services/matching.service';
 import {
@@ -252,7 +253,7 @@ async function handleAccept(ws: WebSocket, tripId: string): Promise<void> {
 
   const accepted = await onDriverAccept(tripId, driverId);
   if (!accepted) {
-    sendTo(ws, { type: 'error', message: `Trip ${tripId} is no longer available` });
+    avisarOfertaPerdida(ws, 'trip', tripId);
     return;
   }
 
@@ -297,16 +298,32 @@ async function handleAcceptErrand(ws: WebSocket, errandId: string): Promise<void
     sendTo(ws, { type: 'error', message: 'Driver not authenticated' });
     return;
   }
+  // «Ya llevas un mandado»: se pregunta a la BASE, no a un mapa en memoria.
+  //
+  // El mapa solo se limpiaba cuando el propio mandadero cerraba el mandado por
+  // este socket. Si lo cancelaba el cliente, o un administrador, la entrada se
+  // quedaba puesta y él no podía aceptar NINGÚN mandado más —ni las compras a
+  // los locales que todavía no son clientes— hasta cerrar la app: tocaba
+  // «Aceptar», el servidor contestaba este error en inglés y no pasaba nada.
   const activeErrand = driverActiveErrandIdMap.get(driverId);
   if (activeErrand && activeErrand !== errandId) {
-    sendTo(ws, { type: 'error', message: 'Already handling an errand' });
-    return;
+    const sigue = await getClientErrandRaw(activeErrand);
+    if (sigue != null && sigue.driverId === driverId && sigue.abierto) {
+      avisarOfertaPerdida(
+        ws, 'errand', errandId,
+        'Ya llevas un mandado en curso. Termínalo antes de aceptar otro.',
+      );
+      return;
+    }
+    driverActiveErrandIdMap.delete(driverId);
   }
 
   // Solo el conductor con la oferta activa puede aceptar (cierra el ciclo de
-  // oferta del matching; rechaza aceptaciones tardías o de otros conductores).
-  if (!onErrandAccept(errandId, driverId)) {
-    sendTo(ws, { type: 'error', message: `Errand ${errandId} is no longer available` });
+  // oferta del matching), o el que la tuvo hace un momento si nadie más la
+  // tiene delante: ver `aceptacionTardia`.
+  if (!onErrandAccept(errandId, driverId) &&
+      !(await aceptacionTardia('errand', errandId, driverId))) {
+    avisarOfertaPerdida(ws, 'errand', errandId);
     return;
   }
 
@@ -322,7 +339,7 @@ async function handleAcceptErrand(ws: WebSocket, errandId: string): Promise<void
   const clientErrand = await getClientErrandRaw(errandId);
   const updated = await acceptClientErrand(errandId, driverName, driverPhone, driverId);
   if (!updated) {
-    sendTo(ws, { type: 'error', message: `Errand ${errandId} is no longer available` });
+    avisarOfertaPerdida(ws, 'errand', errandId);
     return;
   }
 
@@ -588,7 +605,10 @@ async function handleLocationUpdate(
   // matching and must happen on every fix, even while the driver is idle/ONLINE
   // (no active trip).
   const driverId = driverIdByWs.get(ws);
-  if (driverId) await updateDriverGeo(driverId, lat, lng, tomadoEn);
+  if (driverId) {
+    const antes = await updateDriverGeo(driverId, lat, lng, tomadoEn);
+    if (antes === 'OFFLINE') void _curarFueraDeLineaConLatido(ws, driverId);
+  }
 
   // Relay the live position to the passenger of the active trip, if any.
   // Prefer the per-driver map (multi-driver matching), fall back to singleton.
@@ -601,6 +621,64 @@ async function handleLocationUpdate(
 
   const clientWs = clientSockets.get(clientId);
   if (clientWs) sendTo(clientWs, { type: 'driver_location', tripId: effectiveTripId, lat, lng });
+}
+
+/**
+ * EL CONDUCTOR QUE LATE Y ESTÁ MARCADO FUERA DE LÍNEA.
+ *
+ * La app solo manda su posición mientras el conductor está conectado: al
+ * desconectarse apaga el GPS y cierra el socket. Así que un latido que llega
+ * por el socket VIGENTE de alguien marcado `OFFLINE` es una contradicción, y
+ * la que está mal es la marca: se quedó así por un cierre tardío, un reinicio
+ * del servidor a destiempo o cualquier camino que no pasó por aquí.
+ *
+ * Se cura con la MISMA guarda que al conectarse (`motivoParaNoConectar`): a
+ * quien tiene los documentos vencidos o la identidad sin aprobar no se le
+ * pone en línea por latir. Como mucho una comprobación cada medio minuto.
+ */
+const _ultimaCuraFueraDeLinea = new Map<string, number>();
+async function _curarFueraDeLineaConLatido(ws: WebSocket, driverId: string): Promise<void> {
+  if (driverConnections.get(driverId)?.ws !== ws) return;
+  const ahora = Date.now();
+  if (ahora - (_ultimaCuraFueraDeLinea.get(driverId) ?? 0) < 30_000) return;
+  _ultimaCuraFueraDeLinea.set(driverId, ahora);
+  try {
+    if (await motivoParaNoConectar(driverId)) return;
+    await getTripService().noteDriverConnected(driverId);
+    console.warn(
+      `[Presencia] El conductor ${driverId} reportaba posición estando marcado fuera de línea; ` +
+      'vuelve al despacho.',
+    );
+  } catch { /* se reintenta en el siguiente latido */ }
+}
+
+/**
+ * La oferta que el conductor quiso aceptar ya no es suya.
+ *
+ * Tres mensajes, por compatibilidad:
+ *  · `offer_gone` — lo entiende la app nueva, que ESPERA esta respuesta antes
+ *    de entrar al viaje;
+ *  · `error` — lo que se mandaba hasta ahora;
+ *  · el `*_cancelled` del servicio, un momento después — las apps anteriores
+ *    entran al viaje al tocar «Aceptar» sin esperar a nadie, y este es el
+ *    único aviso que su pantalla de pedido sí escucha para salir de un
+ *    servicio que no tienen. Va con retraso porque esa pantalla tarda un
+ *    instante en montarse y un aviso que llega antes se pierde.
+ */
+function avisarOfertaPerdida(
+  ws: WebSocket,
+  kind: 'trip' | 'errand' | 'order',
+  id: string,
+  message = 'Esa solicitud ya no está disponible: la tomó otro conductor o se canceló.',
+): void {
+  sendTo(ws, { type: 'offer_gone', kind, id, message });
+  sendTo(ws, { type: 'error', message });
+  const tarde =
+    kind === 'trip' ? { type: 'trip_cancelled', tripId: id }
+    : kind === 'errand' ? { type: 'errand_cancelled', errandId: id }
+    : { type: 'order_cancelled', orderId: id };
+  const t = setTimeout(() => sendTo(ws, tarde), 1_500);
+  t.unref?.();
 }
 
 // ─── Ride negotiation handlers (multi-driver + bids + chat) ─────────────────────
@@ -997,12 +1075,14 @@ function onMessage(ws: WebSocket, raw: string): void {
       if (!driverId) { sendTo(ws, { type: 'error', message: 'Not authenticated as driver' }); return; }
       const orderId = msg['orderId'];
       if (typeof orderId !== 'string') { sendTo(ws, { type: 'error', message: 'orderId required' }); return; }
-      // Solo el repartidor con la oferta activa puede aceptar.
-      if (!onOrderAccept(orderId, driverId)) {
-        sendTo(ws, { type: 'error', message: 'El pedido ya no está disponible' });
-        return;
-      }
       void (async () => {
+        // Solo el repartidor con la oferta activa puede aceptar, o el que la
+        // tuvo hace un momento si nadie más la tiene delante.
+        if (!onOrderAccept(orderId, driverId) &&
+            !(await aceptacionTardia('order', orderId, driverId))) {
+          avisarOfertaPerdida(ws, 'order', orderId);
+          return;
+        }
         let driverName = 'Repartidor';
         let driverPhone = '';
         try {
@@ -1015,7 +1095,7 @@ function onMessage(ws: WebSocket, raw: string): void {
         if (updated) {
           sendTo(ws, { type: 'order_accept_ok', orderId, order: updated });
         } else {
-          sendTo(ws, { type: 'error', message: 'El pedido ya no está disponible' });
+          avisarOfertaPerdida(ws, 'order', orderId);
         }
       })();
       break;
@@ -1466,10 +1546,19 @@ function onClose(ws: WebSocket): void {
   ridePoolUnsub.get(ws)?.();
   ridePoolUnsub.delete(ws);
   const driverId = driverIdByWs.get(ws);
-  if (driverId && driverConnections.get(driverId)?.ws === ws) {
+  // ¿Este socket era la conexión VIGENTE del conductor, o una vieja?
+  //
+  // Un teléfono que cambia de red (wifi ↔ datos, un túnel) abre un socket
+  // nuevo sin que el viejo se cierre: el viejo queda medio muerto y lo acaba
+  // cerrando el latido del servidor un minuto después. Ese cierre tardío
+  // llegaba aquí y marcaba al conductor FUERA DE LÍNEA —y le borraba el viaje
+  // activo— estando conectado por el socket nuevo, con la app diciendo «En
+  // línea» y el GPS al día. Nada lo devolvía: quedaba invisible para el
+  // despacho hasta que se desconectara y volviera a conectar a mano. Es el
+  // «hay solicitudes que no le llegan a nadie» con conductores en la calle.
+  const eraLaVigente = driverId != null && driverConnections.get(driverId)?.ws === ws;
+  if (driverId && eraLaVigente) {
     driverConnections.delete(driverId);
-  }
-  if (driverId) {
     driverActiveTripIdMap.delete(driverId);
     driverActiveErrandIdMap.delete(driverId);
   }
@@ -1479,7 +1568,7 @@ function onClose(ws: WebSocket): void {
   // Presencia: el conductor desconectado pasa a OFFLINE solo si estaba ONLINE
   // (no pisa ON_TRIP: un corte breve no tumba el viaje activo). Antes se leía
   // driverIdByWs DESPUÉS de borrarlo, así que nunca se marcaba offline.
-  if (driverId) void getTripService().noteDriverDisconnected(driverId);
+  if (driverId && eraLaVigente) void getTripService().noteDriverDisconnected(driverId);
 
   if (ws === driverSocket) {
     driverSocket = null;

@@ -785,21 +785,25 @@ export default function PortalDashboard({
 
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sm:sticky sm:top-0 z-10">
-        <div className={`${CONTENEDOR} flex items-center justify-between py-3 sm:py-4`}>
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-emerald-700 flex items-center justify-center">
+        <div className={`${CONTENEDOR} flex flex-wrap items-center justify-between gap-2 py-3 sm:py-4`}>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-700 flex items-center justify-center shrink-0">
               <ZipaLogo size={24} />
             </div>
-            <div>
-              <p className="font-bold text-slate-900 text-sm leading-tight">{businessName}</p>
-              <p className="text-xs text-slate-400">
+            <div className="min-w-0">
+              <p className="font-bold text-slate-900 text-sm leading-tight truncate">{businessName}</p>
+              <p className="text-xs text-slate-400 truncate">
                 {acceso && acceso.rol !== 'DUENO'
                   ? `${acceso.rolNombre}${acceso.nombre ? ` · ${acceso.nombre}` : ''}`
                   : 'Portal de pedidos'}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          {/* `flex-wrap` + `justify-end`: en el teléfono, con WiFi + contador +
+              Caja + Mesas + Cocina, los botones se acomodan en varias líneas en
+              vez de empujar la página y desbordarla en horizontal (franja negra
+              al costado). */}
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {/* WS indicator */}
             <div className={`flex items-center gap-1.5 text-xs font-medium rounded-full px-2.5 py-1 border ${
               wsConnected
@@ -1035,7 +1039,7 @@ export default function PortalDashboard({
                 <p className="text-slate-400 text-sm mt-1">Los pedidos aparecerán aquí en tiempo real.</p>
               </div>
             ) : (
-              <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-start">
                 {clientOrders.map((order) => (
                   <ClientOrderCard
                     key={order.id}
@@ -1067,7 +1071,7 @@ export default function PortalDashboard({
                 <p className="font-medium text-slate-600">Sin entregas por ahora</p>
               </div>
             ) : (
-              <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 lg:items-start">
                 {orders.map((order) => (
                   <DeliveryOrderCard key={order.id} order={order} token={token} />
                 ))}

@@ -59,6 +59,32 @@ input::placeholder, textarea::placeholder { color: #94a3b8; } /* slate-400 */
   input, textarea, select { font-size: 16px !important; }
 }
 
+/* ── Fechas y horas que se salían de la tarjeta en iPhone ───────────
+   Safari en iOS dibuja `type=date|time|datetime-local` con un ancho propio
+   (el del texto «13 nov 2026» más su flecha) y NO lo encoge para caber en
+   su columna: en Ajustes, «Desde / Hasta» de la promoción empujaba la
+   tarjeta fuera de la pantalla y la página entera se desplazaba de lado.
+   `min-width: 0` lo deja encogerse como cualquier campo; `appearance: none`
+   quita el ancho propio de WebKit (el selector nativo sigue abriendo al
+   tocar) y el alto mínimo evita que el campo vacío quede aplastado. */
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'],
+input[type='month'] {
+  min-width: 0;
+  max-width: 100%;
+}
+@supports (-webkit-touch-callout: none) {
+  input[type='date'],
+  input[type='time'],
+  input[type='datetime-local'],
+  input[type='month'] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-height: 2.75rem;
+  }
+}
+
 /* ── Entrada escalonada de las secciones de la carta ───────────────
    Lo que separa una carta «dinámica» de una lista es que aparezca, no que
    esté. El desplazamiento es corto (10 px) a propósito: más que eso se nota

@@ -481,6 +481,11 @@ class _DriverFreightsScreenState extends State<DriverFreightsScreen> {
                 ),
                 const SizedBox(width: 8),
                 OutlinedButton.icon(
+                  // Ancho finito: con el infinito del tema, «Registrar gasto»
+                  // se quedaba sin ancho en esta fila.
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, kMinInteractiveDimension),
+                  ),
                   onPressed: () => _showEventLog(f),
                   icon: const Icon(Icons.receipt_long_rounded, size: 17),
                   label: const Text('Bitácora'),
@@ -774,6 +779,11 @@ class _FreightEventSheetState extends State<_FreightEventSheet> {
             Row(
               children: [
                 OutlinedButton.icon(
+                  // Ancho finito: junto a un Spacer, el infinito del tema
+                  // desarma la fila.
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, kMinInteractiveDimension),
+                  ),
                   onPressed: _pickPhoto,
                   icon: Icon(
                       _photo == null
