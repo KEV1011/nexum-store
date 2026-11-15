@@ -65,9 +65,22 @@ class LiquidacionViaje {
 /// El servidor rechazó el cambio, o no se le pudo preguntar. El mensaje ya
 /// viene en español y es el que se le enseña al conductor.
 class CierreViajeError implements Exception {
-  const CierreViajeError(this.mensaje, {this.reintentable = false});
+  const CierreViajeError(
+    this.mensaje, {
+    this.reintentable = false,
+    this.esPin = false,
+    this.cancelado = false,
+  });
 
   final String mensaje;
+
+  /// El PIN de custodia no cuadra (o faltó): hay que volver a pedirlo, no
+  /// enseñar un error y dejar al repartidor adivinando qué hacer.
+  final bool esPin;
+
+  /// El cliente canceló el servicio: no hay nada que entregar y la pantalla
+  /// debe cerrarse, no ofrecer otro intento.
+  final bool cancelado;
 
   /// ¿Tiene sentido volver a intentarlo? Un fallo de red sí; un PIN que no
   /// cuadra o un viaje que no es suyo, no — reintentar solo repetiría el mismo
@@ -125,6 +138,145 @@ Future<LiquidacionViaje?> cambiarEstadoViaje({
   throw CierreViajeError(
     'No se pudo confirmar el cierre con el servidor. Revisa tu conexión e '
     'inténtalo otra vez: el viaje sigue abierto hasta que se confirme.',
+    reintentable: true,
+  );
+}
+
+// ─── Pedidos y mandados ──────────────────────────────────────────────────────
+//
+// El mismo defecto que arriba, en los otros dos servicios: «recogido» y
+// «entregado» de un pedido o un mandado viajaban solo por el socket. Cuando el
+// mensaje se perdía, el servidor no liquidaba el domicilio, el cliente seguía
+// viendo «en camino» y el repartidor quedaba «en viaje» — fuera del despacho —
+// con el resumen de la entrega en la pantalla.
+
+/// Qué hacer con lo que contestó (o no contestó) el servidor.
+enum RechazoDeEstado {
+  /// El servidor todavía no tiene la ruta (aún no se desplegó la versión que
+  /// la trae): se manda por el socket, como siempre.
+  rutaAusente,
+
+  /// El PIN no cuadra: se vuelve a pedir.
+  pin,
+
+  /// El cliente canceló el servicio.
+  cancelado,
+
+  /// Sin respuesta, o el servidor está caído o reiniciando: se insiste. Es
+  /// seguro porque el servidor contesta «ya está» a quien repite.
+  reintentar,
+
+  /// Dijo que no y repetir no lo va a cambiar (no es suyo, estado inválido).
+  definitivo,
+}
+
+/// Lee la respuesta de error del servidor. Pura, para poder probarla sin red.
+///
+/// [status] es null cuando no hubo respuesta.
+RechazoDeEstado leerRechazoDeEstado(int? status, Object? cuerpo) {
+  if (status == null) return RechazoDeEstado.reintentar;
+  if (status >= 500 || status == 408 || status == 429) {
+    return RechazoDeEstado.reintentar;
+  }
+  final error = cuerpo is Map ? cuerpo['error'] : null;
+  final codigo = cuerpo is Map ? cuerpo['code'] : null;
+  // El 404 del propio servicio dice «ese pedido no existe o no está asignado a
+  // ti»; el del servidor que no conoce la ruta dice esto otro, y solo ese
+  // significa «servidor anterior».
+  if (status == 404 && error == 'Route not found') {
+    return RechazoDeEstado.rutaAusente;
+  }
+  if (status == 409) return RechazoDeEstado.cancelado;
+  if (status == 400 && codigo == 'custody_pin') return RechazoDeEstado.pin;
+  return RechazoDeEstado.definitivo;
+}
+
+/// El motivo en español que mandó el servidor, o [porDefecto].
+String motivoDelRechazo(Object? cuerpo, String porDefecto) {
+  final error = cuerpo is Map ? cuerpo['error'] : null;
+  return error is String && error.trim().isNotEmpty ? error : porDefecto;
+}
+
+/// Mueve el pedido [orderId] a [estado] (`at_pickup`, `in_transit`,
+/// `delivered`) y espera a que el servidor lo confirme.
+///
+/// Devuelve `true` si lo confirmó y `false` si el servidor aún no tiene esta
+/// ruta — ahí quien llama lo manda por el socket, como antes. Lanza
+/// [CierreViajeError] si no se pudo confirmar.
+Future<bool> cambiarEstadoPedido({
+  required String orderId,
+  required String estado,
+  String? pin,
+}) =>
+    _moverServicio(
+      '/driver/orders/$orderId/status',
+      {'status': estado, if (pin != null) 'pin': pin},
+      'el pedido',
+    );
+
+/// Mueve el mandado [errandId] a [estado] (`shopping`, `on_the_way`,
+/// `delivered`). Mismo contrato que [cambiarEstadoPedido].
+Future<bool> cambiarEstadoMandado({
+  required String errandId,
+  required String estado,
+  double? actualCost,
+  String? pin,
+}) =>
+    _moverServicio(
+      '/driver/errands/$errandId/status',
+      {
+        'status': estado,
+        if (actualCost != null) 'actualCost': actualCost,
+        if (pin != null) 'pin': pin,
+      },
+      'el mandado',
+    );
+
+Future<bool> _moverServicio(
+  String ruta,
+  Map<String, dynamic> datos,
+  String queEs,
+) async {
+  for (var intento = 1; intento <= _intentos; intento++) {
+    int? status;
+    Object? cuerpo;
+    try {
+      await DioClient().dio.post<Map<String, dynamic>>(ruta, data: datos);
+      return true;
+    } on DioException catch (e) {
+      status = e.response?.statusCode;
+      cuerpo = e.response?.data;
+    } catch (_) {
+      // Sin respuesta que leer: se trata como un fallo de red.
+    }
+
+    switch (leerRechazoDeEstado(status, cuerpo)) {
+      case RechazoDeEstado.rutaAusente:
+        return false;
+      case RechazoDeEstado.pin:
+        throw CierreViajeError(
+          motivoDelRechazo(cuerpo, 'El PIN no coincide. Verifícalo.'),
+          esPin: true,
+        );
+      case RechazoDeEstado.cancelado:
+        throw CierreViajeError(
+          motivoDelRechazo(cuerpo, 'El cliente canceló este servicio.'),
+          cancelado: true,
+        );
+      case RechazoDeEstado.definitivo:
+        throw CierreViajeError(
+          motivoDelRechazo(cuerpo, 'El servidor no aceptó el cambio.'),
+        );
+      case RechazoDeEstado.reintentar:
+        if (intento < _intentos) {
+          await Future<void>.delayed(Duration(milliseconds: 400 * intento));
+        }
+    }
+  }
+
+  throw CierreViajeError(
+    'No se pudo confirmar $queEs con el servidor. Revisa tu conexión e '
+    'inténtalo otra vez: sigue abierto hasta que se confirme.',
     reintentable: true,
   );
 }

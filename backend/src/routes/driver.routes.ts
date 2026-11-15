@@ -41,6 +41,15 @@ import {
 } from '../services/manifest.service';
 import { CustodyPinError } from '../lib/custody-pin';
 import {
+  driverUpdateOrderStatus,
+  driverUpdateErrandStatus,
+  EstadoServicioError,
+  ESTADOS_DE_PEDIDO,
+  ESTADOS_DE_MANDADO,
+  type EstadoDeMandado,
+  type DriverOrderStatus,
+} from '../services/estado-por-conductor.service';
+import {
   driverUpdateTripStatus,
   rateTripPassenger,
   TripDriverError,
@@ -1335,6 +1344,85 @@ router.post('/trips/:id/status', async (req: Request, res: Response): Promise<vo
       success: false,
       error: err instanceof Error ? err.message : 'No se pudo actualizar el viaje',
     });
+  }
+});
+
+// ─── Estado de pedidos y mandados por HTTP ────────────────────────────────────
+
+/**
+ * Respuesta común de las dos rutas de abajo.
+ *
+ * 400 = el dato está mal (estado desconocido o PIN que no cuadra): la app
+ * vuelve a pedirlo. 403/404 = no es suyo. 409 = el cliente lo canceló. Solo un
+ * 5xx o no tener respuesta se reintentan.
+ */
+function _responderErrorDeEstado(res: Response, err: unknown, queEs: string): void {
+  if (err instanceof EstadoServicioError) {
+    res.status(err.status).json({ success: false, error: err.message });
+    return;
+  }
+  if (err instanceof CustodyPinError) {
+    res.status(400).json({ success: false, error: err.message, code: 'custody_pin' });
+    return;
+  }
+  res.status(500).json({
+    success: false,
+    error: err instanceof Error ? err.message : `No se pudo actualizar el ${queEs}`,
+  });
+}
+
+/**
+ * POST /driver/orders/:id/status { status, pin? } — mover el pedido, con
+ * respuesta. Ver `estado-por-conductor.service`: el socket no acusa recibo y
+ * «entregado» liquida el domicilio y libera al repartidor.
+ */
+router.post('/orders/:id/status', async (req: Request, res: Response): Promise<void> => {
+  const status = req.body?.['status'];
+  if (typeof status !== 'string' ||
+      !(ESTADOS_DE_PEDIDO as readonly string[]).includes(status)) {
+    res.status(400).json({
+      success: false,
+      error: `El estado debe ser uno de: ${ESTADOS_DE_PEDIDO.join(', ')}`,
+    });
+    return;
+  }
+  const pin = typeof req.body?.['pin'] === 'string' ? (req.body['pin'] as string) : undefined;
+  try {
+    const order = await driverUpdateOrderStatus(
+      req.driverId!, req.params['id']!, status as DriverOrderStatus, pin,
+    );
+    res.json({ success: true, data: { order } });
+  } catch (err) {
+    _responderErrorDeEstado(res, err, 'pedido');
+  }
+});
+
+/**
+ * POST /driver/errands/:id/status { status, actualCost?, pin? } — mover el
+ * mandado, con respuesta.
+ */
+router.post('/errands/:id/status', async (req: Request, res: Response): Promise<void> => {
+  const status = req.body?.['status'];
+  if (typeof status !== 'string' ||
+      !(ESTADOS_DE_MANDADO as readonly string[]).includes(status)) {
+    res.status(400).json({
+      success: false,
+      error: `El estado debe ser uno de: ${ESTADOS_DE_MANDADO.join(', ')}`,
+    });
+    return;
+  }
+  const pin = typeof req.body?.['pin'] === 'string' ? (req.body['pin'] as string) : undefined;
+  // El costo real de la compra: un número de verdad y no negativo, o nada.
+  const crudo = req.body?.['actualCost'];
+  const actualCost =
+    typeof crudo === 'number' && Number.isFinite(crudo) && crudo >= 0 ? crudo : undefined;
+  try {
+    const errand = await driverUpdateErrandStatus(
+      req.driverId!, req.params['id']!, status as EstadoDeMandado, actualCost, pin,
+    );
+    res.json({ success: true, data: { errand } });
+  } catch (err) {
+    _responderErrorDeEstado(res, err, 'mandado');
   }
 });
 

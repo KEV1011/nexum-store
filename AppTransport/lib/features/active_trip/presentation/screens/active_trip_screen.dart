@@ -1506,26 +1506,28 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     setState(() => _isLoading = true);
     try {
       final tripBeforeStart = ref.read(activeTripProvider);
+      // Pedido y mandado: el servidor confirma ANTES de que la pantalla
+      // avance. Con el socket a ciegas, un «recogido» que se perdía dejaba la
+      // app «en camino al cliente» y al cliente viendo «el repartidor va al
+      // local».
+      final conAcuse = trip.request.isOrder || workMode.isErrand;
+      if (conAcuse) {
+        final sigue = await _confirmarPaso(
+          request: trip.request,
+          estadoPedido: 'in_transit',
+          estadoMandado: 'on_the_way',
+          fasePin: necesitaPin ? CustodyPinPhase.pickup : null,
+          pin: pin,
+          actualCost: proof.actualCost,
+        );
+        if (!sigue) return;
+      }
       await ref.read(activeTripProvider.notifier).confirmPickupAndStart(
             photoPath: proof.photoPath,
             orderRef: proof.orderRef,
           );
       if (tripBeforeStart != null) {
-        if (tripBeforeStart.request.isOrder) {
-          // Pedido recogido en el negocio: en tránsito al cliente.
-          DriverWsService().sendOrderStatus(
-            tripBeforeStart.request.orderId!,
-            'in_transit',
-            pin: pin,
-          );
-        } else if (workMode.isErrand) {
-          DriverWsService().sendErrandStatus(
-            tripBeforeStart.request.id,
-            'on_the_way',
-            actualCost: proof.actualCost,
-            pin: pin,
-          );
-        } else {
+        if (!conAcuse) {
           DriverWsService().sendTripStatus(tripBeforeStart.request.id, 'in_progress');
         }
         // La foto de recogida sube al backend en segundo plano (best-effort).
@@ -1609,19 +1611,24 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     LiquidacionViaje? liquidacion;
     try {
       if (tripBeforeFinish != null) {
-        if (tripBeforeFinish.request.isOrder) {
-          // Entregado: el backend liquida el domicilio en la billetera.
-          DriverWsService().sendOrderStatus(
-            tripBeforeFinish.request.orderId!,
-            'delivered',
+        if (tripBeforeFinish.request.isOrder || workMode.isErrand) {
+          // Entregado: el backend liquida el domicilio en la billetera y
+          // devuelve al repartidor al despacho. Igual que el viaje de abajo,
+          // por HTTP y esperando el «sí»: sin él no se enseña el resumen.
+          final sigue = await _confirmarPaso(
+            request: tripBeforeFinish.request,
+            estadoPedido: 'delivered',
+            estadoMandado: 'delivered',
+            fasePin: CustodyPinPhase.delivery,
             pin: pin,
           );
-        } else if (workMode.isErrand) {
-          DriverWsService().sendErrandStatus(
-            tripBeforeFinish.request.id,
-            'delivered',
-            pin: pin,
-          );
+          if (!sigue) {
+            // No se confirmó (ya se dijo por qué): el servicio sigue abierto
+            // y se puede volver a intentar sin salir de la pantalla.
+            _finishing = false;
+            if (mounted) setState(() => _isLoading = false);
+            return;
+          }
         } else {
           // Por HTTP y ESPERANDO respuesta, no por el socket a ciegas.
           //
@@ -1721,6 +1728,77 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         );
         _finishing = false;
         setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  /// Manda al servidor un paso de un PEDIDO o un MANDADO y espera su «sí».
+  ///
+  /// Devuelve `true` si se puede seguir. `false` significa «quédate donde
+  /// estás», y para entonces ya se le dijo al repartidor por qué: el PIN se
+  /// volvió a pedir y lo canceló, no hay red, o el cliente canceló el servicio
+  /// (en ese caso la pantalla ya se cerró).
+  ///
+  /// Si el servidor todavía no tiene la ruta —una versión anterior— se manda
+  /// por el socket, que es lo que se hacía antes.
+  Future<bool> _confirmarPaso({
+    required TripRequestEntity request,
+    required String estadoPedido,
+    required String estadoMandado,
+    required CustodyPinPhase? fasePin,
+    String? pin,
+    double? actualCost,
+  }) async {
+    var pinActual = pin;
+    while (true) {
+      try {
+        if (request.isOrder) {
+          final confirmado = await cambiarEstadoPedido(
+            orderId: request.orderId!,
+            estado: estadoPedido,
+            pin: pinActual,
+          );
+          if (!confirmado) {
+            DriverWsService()
+                .sendOrderStatus(request.orderId!, estadoPedido, pin: pinActual);
+          }
+        } else {
+          final confirmado = await cambiarEstadoMandado(
+            errandId: request.id,
+            estado: estadoMandado,
+            actualCost: actualCost,
+            pin: pinActual,
+          );
+          if (!confirmado) {
+            DriverWsService().sendErrandStatus(
+              request.id,
+              estadoMandado,
+              actualCost: actualCost,
+              pin: pinActual,
+            );
+          }
+        }
+        return true;
+      } on CierreViajeError catch (e) {
+        if (!mounted) return false;
+        if (e.cancelado) {
+          AppSnackbar.showInfo(context, e.mensaje);
+          _handleCancelled();
+          return false;
+        }
+        if (e.esPin && fasePin != null) {
+          // Con su motivo y en el mismo diálogo: un aviso suelto obligaba a
+          // repetir la foto de la entrega para volver a escribir el código.
+          pinActual = await showCustodyPinDialog(
+            context,
+            phase: fasePin,
+            errorText: e.mensaje,
+          );
+          if (!mounted || pinActual == null) return false;
+          continue;
+        }
+        AppSnackbar.showError(context, e.mensaje);
+        return false;
       }
     }
   }
