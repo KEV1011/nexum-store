@@ -1,18 +1,22 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugPrint, defaultTargetPlatform, kIsWeb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
+import 'package:nexum_driver/shared/services/opciones_firebase.dart';
 import 'package:nexum_driver/shared/services/push_routing.dart';
 
 /// Background handler — debe ser top-level o static para FCM.
 @pragma('vm:entry-point')
 Future<void> _firebaseBgHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  // Las MISMAS opciones que en main(): este manejador corre en otro isolate y
+  // en iPhone, sin ellas, Firebase no tiene con qué arrancar.
+  await Firebase.initializeApp(options: opcionesFirebase());
   debugPrint('[FCM-BG] ${message.messageId} → ${message.notification?.title}');
 }
 
@@ -53,11 +57,19 @@ class PushNotificationService {
       }
 
       // Local notifications channel
-      await _local.initialize(
-        const InitializationSettings(
-          android: AndroidInitializationSettings('@mipmap/ic_launcher'),
-        ),
-      );
+      // Solo Android pinta notificaciones locales. En iPhone las muestra el
+      // sistema, y además `initialize` sin ajustes de iOS LANZA (el plugin
+      // hace `iOS!`): `init()` se cortaba aquí, antes de pedir el token, y
+      // ningún aviso llegaba nunca. Tampoco se configura para iOS a propósito:
+      // al inicializarse se registra como delegado de las notificaciones y
+      // puede quitarle a FCM el «tocar el aviso».
+      if (!_esIos) {
+        await _local.initialize(
+          const InitializationSettings(
+            android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+          ),
+        );
+      }
 
       // Background handler
       FirebaseMessaging.onBackgroundMessage(_firebaseBgHandler);
@@ -74,8 +86,20 @@ class PushNotificationService {
       final inicial = await FirebaseMessaging.instance.getInitialMessage();
       if (inicial != null) _abrirDesdeNotificacion(inicial);
 
-      _fcmToken = await FirebaseMessaging.instance.getToken();
-      debugPrint('[FCM] Token obtained: ${_fcmToken != null}');
+      if (_esIos) {
+        // En iPhone el aviso entra por APNs, y FCM no da token hasta tener el
+        // de APNs: pedirlo antes LANZA (`apns-token-not-set`) y cortaba
+        // `init()`. Se espera aparte para no retrasar el arranque de la app.
+        await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
+          alert: true,
+          badge: true,
+          sound: true,
+        );
+        unawaited(_tokenCuandoLlegueApns());
+      } else {
+        _fcmToken = await FirebaseMessaging.instance.getToken();
+        debugPrint('[FCM] Token obtained: ${_fcmToken != null}');
+      }
 
       // Si FCM rota el token, re-registrarlo en el backend.
       FirebaseMessaging.instance.onTokenRefresh.listen((token) {
@@ -86,6 +110,31 @@ class PushNotificationService {
       _initialized = true;
     } catch (e) {
       debugPrint('[FCM] init failed: $e');
+    }
+  }
+
+  static bool get _esIos =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+  /// En iPhone: espera el token de APNs (unos segundos tras el arranque) y
+  /// entonces pide el de FCM. Si no llega en 30 s se rinde en silencio:
+  /// cuando por fin llegue, FCM lo anuncia por `onTokenRefresh`, que ya está
+  /// escuchando.
+  Future<void> _tokenCuandoLlegueApns() async {
+    try {
+      for (var i = 0; i < 30; i++) {
+        if (await FirebaseMessaging.instance.getAPNSToken() != null) {
+          _fcmToken = await FirebaseMessaging.instance.getToken();
+          debugPrint('[FCM] Token obtained: ${_fcmToken != null}');
+          // Sin sesión no registra nada; el home lo vuelve a intentar.
+          await syncTokenToBackend();
+          return;
+        }
+        await Future<void>.delayed(const Duration(seconds: 1));
+      }
+      debugPrint('[FCM] APNs no entregó token todavía');
+    } catch (e) {
+      debugPrint('[FCM] token iOS: $e');
     }
   }
 
@@ -141,6 +190,10 @@ class PushNotificationService {
   // ── Foreground handler ──────────────────────────────────────────────────────
 
   void _onForegroundMessage(RemoteMessage msg) {
+    // En iPhone la muestra el sistema (ver
+    // `setForegroundNotificationPresentationOptions` en `init`): pintarla
+    // también aquí la duplicaría.
+    if (_esIos) return;
     final n = msg.notification;
     if (n == null) return;
 

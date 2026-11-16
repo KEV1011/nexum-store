@@ -1,7 +1,7 @@
 # Podfile para Nexum Driver iOS
-# Mínimo iOS 12 requerido por geolocator y google_maps_flutter
+# Mínimo iOS 13: el mismo IPHONEOS_DEPLOYMENT_TARGET del proyecto (firebase_messaging lo exige)
 
-platform :ios, '12.0'
+platform :ios, '13.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'

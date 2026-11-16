@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+	Capacidades de ZIPA Conductor en iPhone.
+
+	· aps-environment: sin él, iOS no entrega el token de avisos y al
+	  conductor no le llega ningún push (ofertas con la app cerrada, reservas,
+	  cancelaciones). Se deja en `development`: al exportar para
+	  TestFlight/App Store, Xcode lo cambia a `production` según el perfil.
+
+	La ubicación en segundo plano NO va aquí: es un modo de fondo y vive en
+	Info.plist (`UIBackgroundModes` → `location`).
+-->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+	Capacidades de ZIPA en iPhone. Sin este archivo, tres cosas que el código
+	ya hace no funcionan en iOS, y ninguna da error al compilar:
+
+	· aps-environment: sin él, iOS no entrega el token de avisos y ningún
+	  push llega («tu conductor llegó», «tu pedido va en camino»). Se deja en
+	  `development`: al exportar para TestFlight/App Store, Xcode lo cambia a
+	  `production` según el perfil de distribución.
+	· applesignin: «Continuar con Apple» nativo. Sin él, iOS rechaza la
+	  petición en el momento en que la persona toca el botón.
+	· associated-domains: que el QR de la mesa abra la app en vez de Safari.
+	  Los dominios son los MISMOS del intent-filter de Android
+	  (AndroidManifest.xml); el portal sirve el apple-app-site-association
+	  cuando tiene APPLE_TEAM_ID. Sin eso el QR abre la web, como hoy.
+
+	Cada capacidad tiene que estar activada en el App ID (developer.apple.com →
+	Identifiers). Con firma automática Xcode suele activarlas solo; si la
+	subida falla por «provisioning profile doesn't include», es ahí.
+-->
+<plist version="1.0">
+<dict>
+	<key>aps-environment</key>
+	<string>development</string>
+	<key>com.apple.developer.applesignin</key>
+	<array>
+		<string>Default</string>
+	</array>
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:nexum-store.vercel.app</string>
+		<string>applinks:nexum-store.onrender.com</string>
+	</array>
+</dict>
+</plist>

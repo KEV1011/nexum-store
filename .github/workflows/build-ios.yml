@@ -1,21 +1,59 @@
-name: Build iOS (sin firma)
+name: Build iOS
 
-# Builds de iOS SIN firma (--no-codesign): validan que el código compila para
-# iPhone y producen un .ipa que sirve para TestFlight/App Store cuando exista
-# una cuenta Apple Developer (US$99/año) — ahí se firmará con los certificados
-# de esa cuenta. Un iPhone normal NO puede instalar este .ipa directamente:
-# para probar en iPhone HOY, usa la app web (GitHub Pages) desde Safari.
+# Compila las dos apps para iPhone y, si se pide, las firma y las sube a
+# TestFlight. Solo manual: los runners macOS gastan la cuota diez veces más
+# rápido que los de Linux, y no hace falta en cada push.
 #
-# Solo se ejecuta manualmente (workflow_dispatch): los runners macOS son más
-# lentos y no hacen falta en cada push.
+#   · Sin marcar «testflight»: build SIN firma (--no-codesign). Valida que el
+#     código compila para iPhone y deja un .ipa sin firma como artefacto, que
+#     ningún iPhone puede instalar (sirve para comprobar, no para probar).
+#   · Marcando «testflight»: firma con la llave de App Store Connect y sube el
+#     build. Pide los cuatro secrets de Apple (ver docs/PUBLICAR_EN_APP_STORE.md)
+#     y que las dos apps ya existan en App Store Connect.
+#
+# Lo que NO hace, a propósito: generar íconos. Antes este workflow dibujaba un
+# pin verde con Python y se lo pasaba a flutter_launcher_icons con
+# continue-on-error, así que el .ipa salía con ese pin o con el logo de
+# Flutter, y nadie se enteraba. Los íconos están en el repo, generados desde el
+# logo real con tools/generar-iconos-ios.py, y una prueba del backend vigila
+# que no vuelvan a ser los de Flutter ni tengan canal alfa.
 
 on:
   workflow_dispatch:
+    inputs:
+      testflight:
+        description: 'Firmar y subir a TestFlight (requiere los secrets de Apple)'
+        type: boolean
+        default: false
 
 jobs:
-  ios-cliente:
-    name: Cliente iOS (.ipa sin firma)
+  ios:
+    name: ${{ matrix.nombre }}
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nombre: Cliente iOS
+            dir: AppCliente
+            bundle: com.zipa.cliente
+            artefacto: zipa-cliente
+            firebase: GOOGLE_SERVICE_INFO_CLIENTE_BASE64
+            sentry: SENTRY_DSN_CLIENTE
+          - nombre: Conductor iOS
+            dir: AppTransport
+            bundle: com.zipa.conductor
+            artefacto: zipa-conductor
+            firebase: GOOGLE_SERVICE_INFO_CONDUCTOR_BASE64
+            sentry: SENTRY_DSN_DRIVER
+    defaults:
+      run:
+        # Explícito para tener pipefail: sin él, un error en medio de una
+        # tubería pasa como éxito.
+        shell: bash
+    env:
+      API_BASE_URL: 'https://nexum-api-trxr.onrender.com'
+      WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -27,177 +65,202 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Install Python image tools
-        run: python3 -m pip install --break-system-packages Pillow || pip3 install Pillow
-
-      - name: Generate app icons
-        working-directory: AppCliente
-        run: |
-          python3 - <<'PYEOF'
-          from PIL import Image, ImageDraw
-          import os
-
-          os.makedirs('assets/icons', exist_ok=True)
-          size = 1024
-          primary = (0, 200, 83, 255)
-          white = (255, 255, 255, 240)
-          navy = (26, 35, 126, 255)
-
-          def draw_pin(draw, ox=0, oy=0, scale=1.0):
-              def sx(v): return int(ox + v * scale)
-              def sy(v): return int(oy + v * scale)
-              draw.ellipse([sx(262), sy(160), sx(762), sy(660)], fill=white)
-              draw.polygon(
-                  [(sx(352), sy(560)), (sx(672), sy(560)), (sx(512), sy(880))],
-                  fill=white,
-              )
-              draw.ellipse([sx(412), sy(310), sx(612), sy(510)], fill=navy)
-
-          img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-          draw = ImageDraw.Draw(img)
-          draw.ellipse([0, 0, size - 1, size - 1], fill=primary)
-          draw_pin(draw)
-          img.save('assets/icons/app_icon.png')
-
-          img2 = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-          draw_pin(ImageDraw.Draw(img2), ox=int(size*0.125), oy=int(size*0.125), scale=0.75)
-          img2.save('assets/icons/app_icon_foreground.png')
-
-          img3 = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-          d3 = ImageDraw.Draw(img3)
-          d3.ellipse([int(size*0.2), int(size*0.2), int(size*0.8), int(size*0.8)], fill=primary)
-          draw_pin(d3, ox=int(size*0.25), oy=int(size*0.25), scale=0.5)
-          img3.save('assets/icons/splash_logo.png')
-          print("Icons generated")
-          PYEOF
-
       - name: Get dependencies
-        working-directory: AppCliente
+        working-directory: ${{ matrix.dir }}
         run: flutter pub get
 
-      # Branding: si fallan, el build sigue con los íconos default (no bloquea).
-      - name: Generate launcher icons
-        working-directory: AppCliente
-        continue-on-error: true
-        run: dart run flutter_launcher_icons
-
+      # La pantalla de arranque se regenera desde el logo real. Si falla, iOS
+      # usa la de por defecto (blanca): feo pero no rechazable, así que no
+      # bloquea el build.
       - name: Generate native splash
-        working-directory: AppCliente
+        working-directory: ${{ matrix.dir }}
         continue-on-error: true
         run: dart run flutter_native_splash:create
 
-      - name: Build iOS (no codesign)
-        working-directory: AppCliente
+      # ── Firebase (avisos) ────────────────────────────────────────────────
+      # El GoogleService-Info.plist NO se copia al proyecto: Xcode solo
+      # empaqueta lo que está registrado en él. Se leen sus cuatro datos y la
+      # app los recibe por --dart-define (ver lib/**/opciones_firebase.dart).
+      - name: Datos de Firebase
         env:
-          API_BASE_URL: 'https://nexum-api-trxr.onrender.com'
-          WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN_CLIENTE }}
+          PLIST_B64: ${{ secrets[matrix.firebase] }}
+          ESPERADO: ${{ matrix.bundle }}
         run: |
-          flutter build ios --release --no-codesign \
-            --build-number=${{ github.run_number }} \
-            --dart-define=API_BASE_URL=${API_BASE_URL} \
-            --dart-define=WS_BASE_URL=${WS_BASE_URL} \
-            --dart-define=SENTRY_DSN=${SENTRY_DSN}
+          if [ -z "$PLIST_B64" ]; then
+            echo "::warning::Sin ${{ matrix.firebase }}: el build sale SIN avisos push en iPhone."
+            exit 0
+          fi
+          P="$RUNNER_TEMP/GoogleService-Info.plist"
+          echo "$PLIST_B64" | base64 --decode > "$P"
+          leer() { /usr/libexec/PlistBuddy -c "Print :$1" "$P"; }
+          BUNDLE="$(leer BUNDLE_ID)"
+          # Mismo criterio que tools/preparar-google-services.sh en Android:
+          # un plist de otra app arranca Firebase sin error y no entrega nada.
+          if [ "$BUNDLE" != "$ESPERADO" ]; then
+            echo "::error::El plist es de '$BUNDLE' y esta app es '$ESPERADO'. Descarga el de la app iOS correcta en Firebase."
+            exit 1
+          fi
+          {
+            echo "FB_API_KEY=$(leer API_KEY)"
+            echo "FB_APP_ID=$(leer GOOGLE_APP_ID)"
+            echo "FB_SENDER_ID=$(leer GCM_SENDER_ID)"
+            echo "FB_PROJECT_ID=$(leer PROJECT_ID)"
+            echo "FB_BUNDLE_ID=$BUNDLE"
+          } >> "$GITHUB_ENV"
+          echo "Firebase de $BUNDLE listo"
 
-      - name: Package unsigned IPA
-        working-directory: AppCliente/build/ios/iphoneos
+      # ── «Continuar con Google» (solo cliente) ────────────────────────────
+      # Google en iPhone necesita su esquema de URL en el Info.plist: sin él,
+      # la librería nativa lanza una excepción que cierra la app al tocar el
+      # botón. Sin el secret, la app no pinta el botón en iPhone.
+      - name: Google en iPhone
+        if: matrix.dir == 'AppCliente'
+        working-directory: AppCliente/ios/Runner
+        env:
+          CLIENTE: ${{ secrets.GOOGLE_IOS_CLIENT_ID }}
+        run: |
+          if [ -z "$CLIENTE" ]; then
+            echo "Sin GOOGLE_IOS_CLIENT_ID: en iPhone no se ofrece Google."
+            exit 0
+          fi
+          case "$CLIENTE" in
+            *.apps.googleusercontent.com) ;;
+            *) echo "::error::GOOGLE_IOS_CLIENT_ID no tiene la forma XXX.apps.googleusercontent.com"; exit 1 ;;
+          esac
+          ESQUEMA="com.googleusercontent.apps.${CLIENTE%.apps.googleusercontent.com}"
+          /usr/libexec/PlistBuddy -c "Add :GIDClientID string $CLIENTE" Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string $ESQUEMA" Info.plist
+          echo "GOOGLE_IOS_CLIENT_ID=$CLIENTE" >> "$GITHUB_ENV"
+          echo "Esquema de Google añadido: $ESQUEMA"
+
+      - name: Parámetros de compilación
+        env:
+          SENTRY_DSN: ${{ secrets[matrix.sentry] }}
+        run: |
+          {
+            echo "DEFINES<<FIN"
+            echo "--build-number=${{ github.run_number }}"
+            echo "--dart-define=BUILD_TAG=${{ github.run_number }}"
+            echo "--dart-define=API_BASE_URL=$API_BASE_URL"
+            echo "--dart-define=WS_BASE_URL=$WS_BASE_URL"
+            echo "--dart-define=SENTRY_DSN=$SENTRY_DSN"
+            echo "--dart-define=FIREBASE_IOS_API_KEY=${FB_API_KEY:-}"
+            echo "--dart-define=FIREBASE_IOS_APP_ID=${FB_APP_ID:-}"
+            echo "--dart-define=FIREBASE_IOS_SENDER_ID=${FB_SENDER_ID:-}"
+            echo "--dart-define=FIREBASE_IOS_PROJECT_ID=${FB_PROJECT_ID:-}"
+            echo "--dart-define=FIREBASE_IOS_BUNDLE_ID=${FB_BUNDLE_ID:-}"
+            echo "--dart-define=GOOGLE_IOS_CLIENT_ID=${GOOGLE_IOS_CLIENT_ID:-}"
+            echo "FIN"
+          } >> "$GITHUB_ENV"
+
+      # ── Sin firma: solo comprobar que compila ────────────────────────────
+      - name: Build iOS (sin firma)
+        if: ${{ !inputs.testflight }}
+        working-directory: ${{ matrix.dir }}
+        run: |
+          # Sin mapfile: el bash de macOS es el 3.2 y no lo tiene.
+          ARGS=(); while IFS= read -r l; do if [ -n "$l" ]; then ARGS+=("$l"); fi; done <<< "$DEFINES"
+          flutter build ios --release --no-codesign "${ARGS[@]}"
+
+      - name: Empaquetar IPA sin firma
+        if: ${{ !inputs.testflight }}
+        working-directory: ${{ matrix.dir }}/build/ios/iphoneos
         run: |
           mkdir Payload
           cp -r Runner.app Payload/
-          zip -qry zipa-cliente-ios-unsigned.ipa Payload
-          ls -la
+          zip -qry ${{ matrix.artefacto }}-ios-sin-firma.ipa Payload
 
-      - name: Upload IPA
+      - name: Subir artefacto
+        if: ${{ !inputs.testflight }}
         uses: actions/upload-artifact@v7
         with:
-          name: zipa-cliente-ipa-unsigned
-          path: AppCliente/build/ios/iphoneos/zipa-cliente-ios-unsigned.ipa
+          name: ${{ matrix.artefacto }}-ipa-sin-firma
+          path: ${{ matrix.dir }}/build/ios/iphoneos/${{ matrix.artefacto }}-ios-sin-firma.ipa
           retention-days: 30
 
-  ios-driver:
-    name: Conductor iOS (.ipa sin firma)
-    runs-on: macos-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.44.0'
-          channel: stable
-          cache: true
-
-      - name: Install Python image tools
-        run: python3 -m pip install --break-system-packages Pillow || pip3 install Pillow
-
-      - name: Generate app icons
-        working-directory: AppTransport
-        run: |
-          python3 - <<'PYEOF'
-          from PIL import Image, ImageDraw
-          import os
-          os.makedirs('assets/icons', exist_ok=True)
-          size = 1024
-          primary = (0, 200, 83, 255)
-          white = (255, 255, 255, 240)
-          glass = (180, 255, 210, 200)
-          wc = (26, 35, 126, 255)
-          def car(draw, ox=0, oy=0, sc=1.0):
-              def x(v): return int(ox + v*sc)
-              def y(v): return int(oy + v*sc)
-              wr = int(58*sc)
-              draw.rounded_rectangle([x(180),y(380),x(844),y(660)],radius=int(60*sc),fill=white)
-              draw.rounded_rectangle([x(270),y(280),x(754),y(460)],radius=int(50*sc),fill=white)
-              draw.rounded_rectangle([x(300),y(300),x(724),y(440)],radius=int(30*sc),fill=glass)
-              for xo,yo in [(x(180)-wr+10,y(380)+30),(x(844)-3*wr-10,y(380)+30),(x(180)-wr+10,y(660)-30-wr*2),(x(844)-3*wr-10,y(660)-30-wr*2)]:
-                  draw.ellipse([xo,yo,xo+wr*2,yo+wr*2],fill=wc)
-          img = Image.new('RGBA',(size,size),(0,0,0,0))
-          d = ImageDraw.Draw(img); d.ellipse([0,0,size-1,size-1],fill=primary); car(d)
-          img.save('assets/icons/app_icon.png')
-          img2 = Image.new('RGBA',(size,size),(0,0,0,0)); car(ImageDraw.Draw(img2)); img2.save('assets/icons/app_icon_foreground.png')
-          img3 = Image.new('RGBA',(size,size),(0,0,0,0)); car(ImageDraw.Draw(img3),int(size*.225),int(size*.225),.55); img3.save('assets/icons/splash_logo.png')
-          print('Icons OK')
-          PYEOF
-
-      - name: Get dependencies
-        working-directory: AppTransport
-        run: flutter pub get
-
-      - name: Generate launcher icons
-        working-directory: AppTransport
-        continue-on-error: true
-        run: dart run flutter_launcher_icons
-
-      - name: Generate native splash
-        working-directory: AppTransport
-        continue-on-error: true
-        run: dart run flutter_native_splash:create
-
-      - name: Build iOS (no codesign)
-        working-directory: AppTransport
+      # ── Con firma: archivar y subir a TestFlight ─────────────────────────
+      # Firma AUTOMÁTICA con la llave de App Store Connect: Xcode crea o
+      # descarga el certificado y el perfil de distribución él solo, así que
+      # no hay que exportar certificados .p12 ni perfiles a mano. La llave
+      # tiene que tener rol Admin (es la que puede usar certificados
+      # gestionados en la nube).
+      - name: Llave de App Store Connect
+        if: ${{ inputs.testflight }}
         env:
-          API_BASE_URL: 'https://nexum-api-trxr.onrender.com'
-          WS_BASE_URL: 'wss://nexum-api-trxr.onrender.com'
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN_DRIVER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
         run: |
-          flutter build ios --release --no-codesign \
-            --build-number=${{ github.run_number }} \
-            --dart-define=API_BASE_URL=${API_BASE_URL} \
-            --dart-define=WS_BASE_URL=${WS_BASE_URL} \
-            --dart-define=SENTRY_DSN=${SENTRY_DSN}
+          for v in APPLE_TEAM_ID ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_P8_BASE64; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Falta el secret $v. Ver docs/PUBLICAR_EN_APP_STORE.md"
+              exit 1
+            fi
+          done
+          KEY="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          echo "$ASC_KEY_P8_BASE64" | base64 --decode > "$KEY"
+          {
+            echo "ASC_KEY_PATH=$KEY"
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            echo "ASC_KEY_ID=$ASC_KEY_ID"
+            echo "ASC_ISSUER_ID=$ASC_ISSUER_ID"
+          } >> "$GITHUB_ENV"
 
-      - name: Package unsigned IPA
-        working-directory: AppTransport/build/ios/iphoneos
+      # --config-only deja listo el proyecto (Generated.xcconfig con los
+      # dart-define y el número de build, pods instalados) sin compilar dos
+      # veces: el archivo lo hace xcodebuild con la firma.
+      - name: Preparar el proyecto
+        if: ${{ inputs.testflight }}
+        working-directory: ${{ matrix.dir }}
         run: |
-          mkdir Payload
-          cp -r Runner.app Payload/
-          zip -qry zipa-conductor-ios-unsigned.ipa Payload
-          ls -la
+          # Sin mapfile: el bash de macOS es el 3.2 y no lo tiene.
+          ARGS=(); while IFS= read -r l; do if [ -n "$l" ]; then ARGS+=("$l"); fi; done <<< "$DEFINES"
+          flutter build ios --config-only --release "${ARGS[@]}"
 
-      - name: Upload IPA
-        uses: actions/upload-artifact@v7
-        with:
-          name: zipa-conductor-ipa-unsigned
-          path: AppTransport/build/ios/iphoneos/zipa-conductor-ios-unsigned.ipa
-          retention-days: 30
+      - name: Archivar
+        if: ${{ inputs.testflight }}
+        working-directory: ${{ matrix.dir }}/ios
+        run: |
+          xcodebuild -workspace Runner.xcworkspace -scheme Runner \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            archive
+          test -d "$RUNNER_TEMP/Runner.xcarchive" || { echo "::error::No se generó el archivo"; exit 1; }
+
+      # destination=upload: exportar ES subir. El build aparece en App Store
+      # Connect → TestFlight tras unos minutos de procesamiento.
+      - name: Subir a TestFlight
+        if: ${{ inputs.testflight }}
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$APPLE_TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+            <key>manageAppVersionAndBuildNumber</key><false/>
+          </dict>
+          </plist>
+          EOF
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Runner.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+          echo "Build ${{ github.run_number }} de ${{ matrix.bundle }} enviado a App Store Connect"

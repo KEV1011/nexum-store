@@ -11,6 +11,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:nexum_client/app/app.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/observability/crash_reporting.dart';
+import 'package:nexum_client/core/services/opciones_firebase.dart';
 import 'package:nexum_client/core/services/push_notification_service.dart';
 
 /// Despierta el backend apenas abre la app. Render (plan free) duerme tras
@@ -49,7 +50,7 @@ Future<void> _arrancar() async {
 
   if (!kIsWeb) {
     try {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(options: opcionesFirebase());
       await PushNotificationService().init();
     } catch (_) {
       // La app funciona sin Firebase si google-services.json no está.
