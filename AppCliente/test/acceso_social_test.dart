@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nexum_client/features/auth/presentation/widgets/acceso_social.dart';
 
@@ -60,5 +61,42 @@ void main() {
       }).apple,
       isTrue,
     );
+  });
+
+  group('Google en iPhone', () {
+    // La regla, sin plataforma.
+    test('sin id de cliente de iOS, no (la app se cerraría al tocarlo)', () {
+      expect(googleEnIos(clienteIos: '', apple: true), isFalse);
+      expect(googleEnIos(clienteIos: '   ', apple: true), isFalse);
+    });
+
+    test('sin Apple al lado, no (regla 4.8 de la App Store)', () {
+      expect(googleEnIos(clienteIos: 'ios.apps.googleusercontent.com', apple: false), isFalse);
+    });
+
+    test('con los dos, sí', () {
+      expect(googleEnIos(clienteIos: 'ios.apps.googleusercontent.com', apple: true), isTrue);
+    });
+
+    // Y que el getter la aplique de verdad en iPhone. Estas pruebas se
+    // compilan sin GOOGLE_IOS_CLIENT_ID, así que en iOS Google NO puede salir
+    // aunque el servidor lo anuncie y Apple esté activo.
+    test('en iPhone, anunciado por el servidor no basta', () {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
+      final p = ProveedoresAcceso.fromJson(const {
+        'google': {'clientId': 'web.apps.googleusercontent.com'},
+        'apple': {'web': null},
+      });
+      expect(p.apple, isTrue, reason: 'en iPhone Apple es nativo');
+      expect(p.google, isFalse);
+    });
+
+    test('en Android no cambia nada', () {
+      final p = ProveedoresAcceso.fromJson(const {
+        'google': {'clientId': 'web.apps.googleusercontent.com'},
+      });
+      expect(p.google, isTrue);
+    });
   });
 }

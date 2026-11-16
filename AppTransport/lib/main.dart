@@ -11,6 +11,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:nexum_driver/app/app.dart';
 import 'package:nexum_driver/core/config/api_config.dart';
 import 'package:nexum_driver/core/observability/crash_reporting.dart';
+import 'package:nexum_driver/shared/services/opciones_firebase.dart';
 import 'package:nexum_driver/shared/services/proof_upload.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 
@@ -48,7 +49,7 @@ Future<void> _arrancar() async {
 
   if (!kIsWeb) {
     try {
-      await Firebase.initializeApp();
+      await Firebase.initializeApp(options: opcionesFirebase());
       await PushNotificationService().init();
     } catch (_) {
       // La app funciona sin Firebase si google-services.json no está.

@@ -15,7 +15,8 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform, kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -24,6 +25,16 @@ import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/features/auth/presentation/providers/auth_provider.dart';
 import 'package:nexum_client/features/auth/presentation/widgets/boton_google_web.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+
+/// El id del cliente de iOS de Google, si esta compilación lo trae.
+const _googleIosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
+
+bool get _esIos => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+
+/// La regla de Google en iPhone, sin plataforma, para poder probarla.
+@visibleForTesting
+bool googleEnIos({required String clienteIos, required bool apple}) =>
+    clienteIos.trim().isNotEmpty && apple;
 
 /// Lo que el servidor dice que se puede usar.
 class ProveedoresAcceso {
@@ -54,7 +65,21 @@ class ProveedoresAcceso {
   final String? appleServicesId;
   final String? appleRedirectUri;
 
-  bool get google => googleClientId != null;
+  /// Google en iPhone pide DOS cosas que en Android no hacen falta, y por eso
+  /// no basta con que el servidor lo anuncie:
+  ///
+  /// 1. Su propio id de cliente de iOS, compilado en la app
+  ///    (`GOOGLE_IOS_CLIENT_ID`) junto con su esquema de URL en el Info.plist,
+  ///    que pone el workflow. Sin el esquema, la librería nativa lanza una
+  ///    excepción que Dart no puede atrapar: la app se CIERRA al tocar el
+  ///    botón. Por eso, sin ese id, el botón no existe.
+  /// 2. Que Apple también se ofrezca. Es la regla 4.8 de la App Store: una
+  ///    app que deja entrar con Google tiene que dejar entrar con Apple.
+  bool get google {
+    if (googleClientId == null) return false;
+    if (!_esIos) return true;
+    return googleEnIos(clienteIos: _googleIosClientId, apple: apple);
+  }
 
   /// Apple es nativo solo en iOS. En Android y en la web va por la página de
   /// Apple, que necesita el Services ID; sin él, ahí no se ofrece.
@@ -81,7 +106,13 @@ Future<void> _iniciarGoogle(String clientId) {
       .initialize(
         // En la web, el id del cliente web; en Android, ese mismo id como
         // «servidor»: así el token sale con la audiencia que el backend acepta.
-        clientId: kIsWeb ? clientId : null,
+        // En iPhone, además, el id de su cliente de iOS (sin él, la librería
+        // nativa no arranca; `google` ni siquiera pinta el botón).
+        clientId: kIsWeb
+            ? clientId
+            : _esIos
+                ? _googleIosClientId
+                : null,
         serverClientId: kIsWeb ? null : clientId,
       )
       .catchError((Object e) {
