@@ -68,6 +68,7 @@ import { getMunicipality } from '../services/municipality.service';
 import {
   searchPooledTrips,
   getPooledTripById,
+  tipoDeSalida,
   bookSeats,
   cancelSeatBooking,
   rateSeatBooking,
@@ -113,7 +114,7 @@ import {
   reconcilePayment,
 } from '../services/payment.service';
 import { metodosDisponibles } from '../lib/metodos-pago';
-import { motivoParaNoPedirIntermunicipal } from '../lib/intermunicipal-abierto';
+import { motivoParaNoPedirIntermunicipal, motivoParaNoReservarPuesto } from '../lib/intermunicipal-abierto';
 import { ELOGIOS_AL_CONDUCTOR, MAX_ELOGIOS_POR_VIAJE } from '../lib/elogios';
 import { requestTripTip, requestOrderTip, TipError } from '../services/tip.service';
 import {
@@ -1339,9 +1340,10 @@ router.get('/intercity/pool/:id', clientAuthMiddleware, async (req, res) => {
 });
 
 router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) => {
-  // Igual que arriba. El puesto URBANO (`/pool/urbano/*`) NO se toca: es
-  // movilidad dentro de la ciudad, que es justo donde está el foco.
-  const cerradoPool = motivoParaNoPedirIntermunicipal();
+  // Igual que arriba, pero SOLO para salidas intermunicipales: el puesto de
+  // taxi URBANO se reserva por esta misma ruta, y cortarla entera le decía
+  // «el servicio intermunicipal abre pronto» a quien iba al centro.
+  const cerradoPool = motivoParaNoReservarPuesto(await tipoDeSalida(req.params['id']!));
   if (cerradoPool) {
     res.status(422).json({ success: false, error: cerradoPool });
     return;
