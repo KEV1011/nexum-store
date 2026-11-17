@@ -110,9 +110,18 @@ describe('tomar un viaje publicado por un pasajero', () => {
   });
 
   it('una salida cerrada o cancelada no se toma', () => {
-    for (const estado of ['CANCELLED', 'DEPARTED', 'COMPLETED', 'FULL']) {
+    for (const estado of ['CANCELLED', 'DEPARTED', 'COMPLETED']) {
       expect(toma({ estado })).toMatch(/ya no está disponible/i);
     }
+  });
+
+  it('una salida LLENA y sin taxista SÍ se toma', () => {
+    // Esta prueba afirmaba lo contrario. Llena significa que ya no caben más
+    // PASAJEROS, no que ya tenga carro: cuatro personas esperando un taxi es
+    // justo el viaje que más necesita uno. Con la regla vieja, en cuanto se
+    // ocupaba el último puesto el viaje desaparecía del tablero del conductor
+    // y nadie lo podía tomar.
+    expect(toma({ estado: 'FULL' })).toBeNull();
   });
 
   it('se puede tomar unos minutos DESPUÉS de la hora de salida', () => {

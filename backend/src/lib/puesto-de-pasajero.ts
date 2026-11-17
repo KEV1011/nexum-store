@@ -135,11 +135,23 @@ export const TIPOS_QUE_PUEDEN_TOMAR = ['TAXI', 'PARTICULAR'] as const;
 export const GRACIA_TOMA_MIN = 15;
 
 /** Por qué ese conductor NO puede tomar esa salida, o `null` si puede. */
+/**
+ * En qué estados un viaje publicado por un pasajero puede tomarlo un taxista.
+ * FULL entra: lleno de pasajeros no quiere decir que tenga carro. La usan el
+ * tablero, esta regla y la escritura atómica — si una de las tres dijera otra
+ * cosa, el tablero enseñaría viajes que al tocar «Tomar» se rechazan.
+ */
+export const ESTADOS_TOMABLES = ['OPEN', 'FULL'] as const;
+
 export function motivoParaNoTomar(t: TomaDeSalida): string | null {
   const ahora = t.ahora ?? new Date();
 
   if (t.driverIdActual) return 'Otro conductor ya tomó este viaje.';
-  if (t.estado !== 'OPEN') return 'Este viaje ya no está disponible.';
+  // Lleno (FULL) se toma igual: ya no caben más pasajeros, pero sigue
+  // necesitando el taxi. Ver `ESTADOS_TOMABLES`.
+  if (!(ESTADOS_TOMABLES as readonly string[]).includes(t.estado)) {
+    return 'Este viaje ya no está disponible.';
+  }
   if (t.salida.getTime() + GRACIA_TOMA_MIN * 60_000 <= ahora.getTime()) {
     return `La hora de salida de este viaje pasó hace más de ${GRACIA_TOMA_MIN} minutos.`;
   }

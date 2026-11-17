@@ -63,11 +63,22 @@ class VehicleGlyph extends StatelessWidget {
   /// amarillo, camión gris azulado…), que es lo que se quiere casi siempre.
   final Color? color;
 
-  // El marcador es cuadrado y del lado del arte: así el vehículo cabe girado
-  // en cualquier rumbo sin recortarse. El camión, que es el más largo, mide 87
-  // de diagonal — por eso 96 y no menos. Lo que sobra es transparente.
-  static const double markerWidth = _ladoArte;
-  static const double markerHeight = _ladoArte;
+  // El marcador es cuadrado y el arte se reduce ENTERO dentro de él: así el
+  // vehículo cabe girado en cualquier rumbo sin recortarse (el camión, el más
+  // largo, mide 87 de diagonal en el lienzo de 96, o sea 58 en el de 64). Lo
+  // que sobra es transparente.
+  static const double markerWidth = _lado;
+  static const double markerHeight = _lado;
+
+  /// Lado con que se DIBUJA sobre el mapa. Era el del arte (96) y a escala de
+  /// calle el carro ocupaba casi una cuadra: con varios vehículos cerca se
+  /// tapaban entre sí y las calles. El arte se reduce entero, así que el
+  /// camión sigue cabiendo girado en cualquier rumbo.
+  static const double _lado = 64;
+
+  /// Cuánto se reduce el arte (y el dibujo de respaldo, para que la moto de
+  /// reparto conserve su tamaño frente al carro).
+  static const double _escala = _lado / _ladoArte;
 
   /// Traduce el tipo del marcador al del dibujo cenital.
   VehicleTopDownKind get _dibujo => switch (kind) {
@@ -141,8 +152,8 @@ class VehicleGlyph extends StatelessWidget {
   static const double _ladoArte = 96;
 
   Widget get _dibujado => SizedBox(
-        width: 30,
-        height: 44,
+        width: 30 * _escala,
+        height: 44 * _escala,
         child: CustomPaint(
           painter: VehicleTopDownPainter(
             kind: _dibujo,
@@ -161,8 +172,8 @@ class VehicleGlyph extends StatelessWidget {
         ? _dibujado
         : Image.asset(
             ruta,
-            width: _ladoArte,
-            height: _ladoArte,
+            width: _lado,
+            height: _lado,
             filterQuality: FilterQuality.medium,
             // Si el archivo faltara en el paquete, el mapa no se queda sin
             // vehículo: vuelve al dibujo en código.

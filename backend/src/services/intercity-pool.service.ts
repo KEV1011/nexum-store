@@ -62,6 +62,7 @@ import {
   GRACIA_TOMA_MIN,
   motivoParaNoPublicarComoPasajero,
   motivoParaNoTomar,
+  ESTADOS_TOMABLES,
   TIPOS_QUE_PUEDEN_TOMAR,
 } from '../lib/puesto-de-pasajero';
 import {
@@ -949,7 +950,8 @@ export async function listarPuestosSinConductor(
   const trips = await prisma.pooledTrip.findMany({
     where: {
       kind: 'URBANO',
-      status: 'OPEN',
+      // Lleno y sin taxista también: ver `ESTADOS_TOMABLES`.
+      status: { in: [...ESTADOS_TOMABLES] },
       driverId: null,
       origin: slug,
       departureTime: { gt: desde, lte: hasta },
@@ -994,7 +996,7 @@ export async function tomarPuestoDePasajero(
 
   const v = conductor.vehicles[0]!;
   const tomada = await prisma.pooledTrip.updateMany({
-    where: { id: tripId, driverId: null, status: 'OPEN' },
+    where: { id: tripId, driverId: null, status: { in: [...ESTADOS_TOMABLES] } },
     data: {
       driverId,
       driverName: conductor.name,
