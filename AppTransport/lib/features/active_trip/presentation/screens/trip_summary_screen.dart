@@ -17,6 +17,7 @@ import 'package:nexum_driver/features/active_trip/presentation/providers/active_
 import 'package:nexum_driver/features/active_trip/presentation/providers/siguiente_viaje_provider.dart';
 import 'package:nexum_driver/shared/models/trip_model.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
+import 'package:nexum_driver/shared/services/servicios_abiertos.dart';
 
 /// Pantalla de resumen de viaje completado.
 /// Recibe un [TripModel] como `extra` desde el router tras finalizar el viaje.
@@ -40,9 +41,14 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
   Timer? _settlementTimeout;
   bool _waitingSettlement = true;
 
+  /// Lo que le queda abierto (los otros pedidos que lleva a la vez). Lo dice
+  /// el servidor: la app solo sabe del que acaba de entregar.
+  List<ServicioAbierto> _pendientes = const [];
+
   @override
   void initState() {
     super.initState();
+    unawaited(_cargarPendientes());
 
     _settlement = DriverWsService().settlementFor(trip.id);
     if (_settlement == null) {
@@ -83,6 +89,27 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
     _settlementSub?.cancel();
     _settlementTimeout?.cancel();
     super.dispose();
+  }
+
+  Future<void> _cargarPendientes() async {
+    try {
+      final todos = await listarServiciosAbiertos();
+      if (mounted) setState(() => _pendientes = todos);
+    } catch (_) {
+      // Sin red: el botón de siempre. Al abrir la app se le vuelve a ofrecer.
+    }
+  }
+
+  /// Pasa al siguiente de los pedidos que lleva, en la fase en que va. Mismo
+  /// `await` que `_irAlSiguiente`, por la misma razón.
+  Future<void> _irAlPendiente() async {
+    if (_pendientes.isEmpty) return;
+    final s = _pendientes.first;
+    final solicitud = s.solicitud;
+    if (solicitud == null) return;
+    await ref.read(activeTripProvider.notifier).retomar(solicitud, s.fase);
+    if (!mounted) return;
+    context.go('/active-trip');
   }
 
   /// Entra en el viaje encadenado que ya había aceptado.
@@ -350,6 +377,26 @@ class _TripSummaryScreenState extends ConsumerState<TripSummaryScreen> {
                     minimumSize: const Size.fromHeight(52),
                   ),
                 )
+              else if (_pendientes.isNotEmpty) ...[
+                // Lleva más pedidos: el siguiente va directo, sin pasar por el
+                // inicio (donde tendría que buscarlo).
+                ElevatedButton.icon(
+                  onPressed: _irAlPendiente,
+                  icon: const Icon(Icons.shopping_bag_rounded),
+                  label: Text(
+                    _pendientes.length == 1
+                        ? 'Siguiente ${_pendientes.first.nombre.toLowerCase()} · '
+                            '${_pendientes.first.solicitud?.passenger.name ?? _pendientes.first.ref}'
+                        : 'Siguiente pedido (te quedan ${_pendientes.length})',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                  ),
+                ),
+                // Sin «Volver al inicio» a propósito: el inicio no enseña los
+                // pedidos que lleva, y desde ahí el cliente que espera se
+                // queda sin repartidor hasta que reabra la app.
+              ]
               else
                 ElevatedButton.icon(
                   onPressed: () => context.go('/home'),

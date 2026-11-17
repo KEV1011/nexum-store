@@ -109,3 +109,28 @@ Future<String?> soltarServicioAbierto(ServicioAbierto s) async {
     return 'No pudimos soltar el servicio. Revisa tu conexión e inténtalo de nuevo.';
   }
 }
+
+/// El id con que el servidor conoce la solicitud que está en pantalla: un
+/// pedido va por su `orderId`, lo demás por su `id`.
+String idEnServidor(TripRequestEntity r) => r.isOrder ? (r.orderId ?? r.id) : r.id;
+
+/// Los OTROS servicios abiertos: todos menos el que está en pantalla.
+///
+/// Es lo que permite llevar varios pedidos a la vez —en un pueblo los locales
+/// quedan a dos cuadras y el despacho le ofrece otro pedido cercano a quien ya
+/// lleva uno—: el servidor es quien sabe qué tiene abierto, y la app enseña
+/// el resto para cambiar de uno a otro.
+List<ServicioAbierto> otrosServicios(
+  List<ServicioAbierto> todos,
+  TripRequestEntity? actual,
+) {
+  if (actual == null) return todos;
+  final id = idEnServidor(actual);
+  final tipo = actual.isOrder ? 'order' : actual.isErrand ? 'errand' : 'trip';
+  return todos.where((s) => !(s.id == id && s.tipo == tipo)).toList();
+}
+
+/// Una oferta encadenada que se APILA (otro pedido mientras lleva un pedido)
+/// en vez de quedar en cola para después: se acepta y se atiende a la vez.
+bool esPedidoApilado(TripRequestEntity oferta, TripRequestEntity? actual) =>
+    oferta.isOrder && (actual?.isOrder ?? false);

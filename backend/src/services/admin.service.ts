@@ -10,6 +10,7 @@ import {
 import { ESTADOS_DESPACHABLES, esDespachable } from '../lib/estado-pedido';
 import { seDespacha } from '../lib/modo-pedido';
 import { serviciosAbiertos } from '../lib/liberar-conductor';
+import { PEDIDO_APILADO_RADIO_M, puedeApilarPedido } from './matching.service';
 import { motivoDeDiagnostico, type TipoDiagnostico } from '../lib/diagnostico-despacho';
 
 export type { TipoDiagnostico };
@@ -653,9 +654,13 @@ export async function diagnoseMatching(
     // «En viaje» sin nada abierto es el caso que se esconde: la app lo enseña
     // en línea y el despacho lo salta. Se distingue para que el panel lo diga.
     const enViajeVacio = r.status === 'ON_TRIP' && (await serviciosAbiertos(r.id)) === 0;
+    // Con un pedido en la mano puede llevarse otro si el local queda cerca:
+    // la misma pregunta que se hace el despacho.
+    const apilable = tipo === 'order' && r.status === 'ON_TRIP' && !enViajeVacio
+      && dist !== null && dist <= PEDIDO_APILADO_RADIO_M && (await puedeApilarPedido(r.id));
     const motivo = motivoDeDiagnostico({
       status: r.status, enViajeVacio, isVerified: r.isVerified, bloqueado,
-      acceptsKind, tipo, geoAge, fresh, dist, inRadius,
+      acceptsKind, tipo, geoAge, fresh, dist, inRadius, apilable,
     });
     filas.push({
       id: r.id,
