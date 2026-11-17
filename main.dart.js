@@ -134884,7 +134884,7 @@ j=A.bxo(r==null?j.at:r,B.wr)
 r=l.ay
 q=l.Q
 q===$&&A.a()
-s.push(new A.nX(i,A.bvH(h!==!0,r,j,q),96,96,k))
+s.push(new A.nX(i,A.bvH(h!==!0,r,j,q),64,64,k))
 return s},
 avb(a,b){var s,r,q,p,o,n,m,l,k,j=this,i=new A.G3(B.ahC,B.Wg),h=new A.G3(null,null)
 if(!j.ax)return B.akG
@@ -139010,7 +139010,7 @@ if(p.w.a&&p.dx!=null){q=p.dx
 q.toString
 n=n.c7($.jd(),t.kv).a
 n=A.bxo(n==null?o:n.w,B.wr)
-r.push(A.buJ(A.b([new A.nX(q,A.bvH(!0,p.fr,n,o),96,96,o)],t._I)))}n=A.b([p.avl(m)],s)
+r.push(A.buJ(A.b([new A.nX(q,A.bvH(!0,p.fr,n,o),64,64,o)],t._I)))}n=A.b([p.avl(m)],s)
 if(!p.z&&j!=null)n.push(new A.a1(B.aah,new A.amd(j,new A.b93(p),new A.b94(p),o),o))
 n=A.b([new A.yn(r,B.anv,p.x,o),A.dR(!0,A.a0(n,B.k,B.f,B.h,0,B.p),B.a0,!0),A.bAi(new A.b95(p,m),!0,0.52,0.92,0.3,!0,B.ala)],s)
 s=p.w
@@ -139577,7 +139577,7 @@ n=A.a4d(i?B.a9:B.au,16,k,16)
 m=A.a4(k,B.aeN,B.l,k,k,new A.a2(B.xR.ab(0.12),k,k,A.T(8),k,k,B.t),k,38,k,k,k,k,k,38)
 o=o.z
 o=A.ao(A.ef(A.b([new A.Bi("VIAJES",k),new A.fM(B.oM,"Inicio",new A.b_P(a),B.o,!1,k),new A.fM(B.acP,"Historial de viajes",new A.b_T(a),B.cD,!1,k),new A.fM(B.GI,"Reservas",new A.b_U(a),B.lf,!1,k),new A.fM(B.iv,"Mis fletes de carga",new A.b_V(a),B.aE,!1,k),new A.fM(B.Go,"Remitos de mercanc\xeda",new A.b_W(a),B.o0,!1,k),new A.fM(B.d3,"Calificaciones",new A.b_X(a),B.ci,!1,k),new A.fM(B.zG,"ZIPA Pro",new A.b_Y(a),B.o0,!1,k),new A.fM(B.lP,"Viajes compartidos",new A.b_Z(a),B.ac,!1,k),new A.fM(B.dU,"Intermunicipal",new A.b_F(a),B.ac,!1,k),new A.fM(B.oV,"Verificaci\xf3n",new A.b_G(a),B.o,!1,k),new A.Bi("FINANZAS",k),new A.fM(B.ad4,"Ganancias",new A.b_H(a),B.Eg,!1,k),new A.fM(B.lL,"Billetera",new A.b_I(a),B.a77,!1,k),new A.fM(B.acX,"Promociones",new A.b_J(a),B.a6o,!1,k),new A.Bi("HERRAMIENTAS",k),new A.fM(B.acu,"Rendimiento",new A.b_K(a),B.a74,!1,k),new A.fM(B.GK,"Mis documentos",new A.b_L(a),B.a7j,!1,k),new A.fM(B.lS,"Centro de seguridad",new A.b_M(a),B.I,!1,k),new A.Bi("CUENTA",k),new A.fM(B.GT,"Mi perfil",new A.b_N(a),B.Ex,!1,k),new A.fM(B.zx,"Soporte y FAQ",new A.b_O(a),B.xT,!1,k),new A.fM(B.Gw,"Configuraci\xf3n",new A.b_Q(a),B.a6e,!1,k),n,A.fH(!1,k,k,k,!0,k,12,k,!0,k,m,k,k,k,k,k,!1,k,k,k,k,k,k,A.j("Modo oscuro",k,k,k,k,k,o==null?k:o.cU(B.aJ),k,k,k),k,A.bDu(k,k,k,B.o,k,!1,B.F,k,k,k,k,k,k,new A.b_R(b),k,k,k,k,k,k,k,k,g),k),new A.fM(B.zz,"Cerrar sesi\xf3n",new A.b_S(a,b),B.I,!0,k)],p),k,B.dm,k,B.X,!1),1)
-return new A.a4l(h,A.dR(!0,A.a0(A.b([r,q,o,new A.a1(B.a1,A.j("ZIPA Conductor v1.0.0 \xb7 build 217",k,k,k,k,k,s==null?k:s.aB(B.b4),k,k,k),k)],p),B.k,B.f,B.h,0,B.p),B.a0,!0),k)}}
+return new A.a4l(h,A.dR(!0,A.a0(A.b([r,q,o,new A.a1(B.a1,A.j("ZIPA Conductor v1.0.0 \xb7 build 218",k,k,k,k,k,s==null?k:s.aB(B.b4),k,k,k),k)],p),B.k,B.f,B.h,0,B.p),B.a0,!0),k)}}
 A.b_B.prototype={
 $1(a){return a.length===0},
 $S:18}
@@ -141170,7 +141170,7 @@ m.push(h)}else m=j
 j=t.K
 j=A.bCr(A.b([A.aa4(B.aE,B.w7,m,B.ej,B.hU,3.5,j)],t._6),j)
 m=A.b([new A.nX(k,B.anx,40,48,B.di),new A.nX(h,B.Uo,40,48,B.di)],t._I)
-if(r!=null)m.push(new A.nX(r,A.bvH(!0,i>=r.b?90:270,B.a1G,o),96,96,o))
+if(r!=null)m.push(new A.nX(r,A.bvH(!0,i>=r.b?90:270,B.a1G,o),64,64,o))
 return A.fk(g,A.bv(A.jV(new A.yn(A.b([B.zj,j,A.buJ(m)],t.p),l,o,o),!0,o),n,o),B.b1)}}
 A.b7b.prototype={
 $1(a){var s=this.a
@@ -149184,12 +149184,12 @@ t(a){var s,r=this,q=A.b([],t.p)
 if(r.f&&r.e!=null){s=r.e
 s.toString
 q.push(A.f8(s,new A.aXW(r),null))}q.push(r.avQ())
-return A.bv(A.dS(B.a8,q,B.l,B.b_,null),96,96)},
+return A.bv(A.dS(B.a8,q,B.l,B.b_,null),64,64)},
 ga4h(){var s=null,r=this.gay0(),q=this.gavP()
-return A.bv(A.f9(s,s,!1,s,new A.adR(r,q,s),B.ag),44,30)},
+return A.bv(A.f9(s,s,!1,s,new A.adR(r,q,s),B.ag),29.333333333333332,20)},
 avQ(){var s,r=this,q=null,p=A.c12(r.c)
 if(p==null)s=r.ga4h()
-else s=new A.yH(A.bCS(q,q,new A.Ka(p,q,q)),new A.aXV(r),96,96,q,B.dR,q,q)
+else s=new A.yH(A.bCS(q,q,new A.Ka(p,q,q)),new A.aXV(r),64,64,q,B.dR,q,q)
 return new A.Uh(r.d,r.f,A.dS(B.a8,A.b([new A.akm(s,q),s],t.p),B.A,B.b_,q),q)}}
 A.aXW.prototype={
 $2(a,b){var s,r=null,q=this.a.e.x
