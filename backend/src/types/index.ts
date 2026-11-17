@@ -1191,6 +1191,9 @@ export interface RequestClientErrandDTO {
   /** Punto de recogida: se persiste para poder reanudar la búsqueda. */
   pickupLat?: number;
   pickupLng?: number;
+  /** Punto de entrega, si el cliente lo eligió en el mapa o de la lista. */
+  dropoffLat?: number;
+  dropoffLng?: number;
   purchaseBudget?: number;
   notes?: string;
 }
@@ -1261,6 +1264,9 @@ export interface ErrandRequestDTO {
    */
   pickupLat?: number;
   pickupLng?: number;
+  /** A dónde se entrega, cuando el cliente eligió el punto. */
+  dropoffLat?: number;
+  dropoffLng?: number;
 }
 
 // ─── Intercity Bookings ───────────────────────────────────────────────────────

@@ -107,6 +107,7 @@ import {
   TripChatError,
 } from '../services/trip-chat.service';
 import { initBus, publishDelivery, BusTarget } from '../lib/bus';
+import { liberarConductorOcioso } from '../lib/liberar-conductor';
 import { recibeAviso, type RolPortal } from '../lib/permisos-portal';
 import { registerCerrarSesionPersonal, resolverAccesoPortal } from '../services/personal.service';
 
@@ -608,6 +609,7 @@ async function handleLocationUpdate(
   if (driverId) {
     const antes = await updateDriverGeo(driverId, lat, lng, tomadoEn);
     if (antes === 'OFFLINE') void _curarFueraDeLineaConLatido(ws, driverId);
+    _vigilarLatidoSinServicio(ws, driverId, antes, tripId);
   }
 
   // Relay the live position to the passenger of the active trip, if any.
@@ -621,6 +623,48 @@ async function handleLocationUpdate(
 
   const clientWs = clientSockets.get(clientId);
   if (clientWs) sendTo(clientWs, { type: 'driver_location', tripId: effectiveTripId, lat, lng });
+}
+
+/**
+ * EL CONDUCTOR «EN VIAJE» QUE LATE DESDE SU PANTALLA DE INICIO.
+ *
+ * Con un servicio en pantalla, la app manda cada posición con el id de ese
+ * servicio; el latido SIN id solo sale desde el inicio, cuando no hay nada
+ * activo. Así que un conductor marcado ON_TRIP que late sin id durante un
+ * rato seguido no está atendiendo nada: lo que tiene abierto en la base es un
+ * servicio huérfano (la app se cerró a mitad, una prueba a medias), y por él
+ * el despacho lo ignoraba para siempre. Ver `liberarConductorOcioso`.
+ *
+ * «Un rato seguido»: `OCIOSO_EN_VIAJE_S` de latidos sin hueco de más de 30 s.
+ * El margen cubre los segundos entre aceptar una oferta y que se abra la
+ * pantalla del servicio, que es cuando la app empieza a mandar el id.
+ */
+const OCIOSO_EN_VIAJE_MS = Number(process.env['OCIOSO_EN_VIAJE_S'] ?? 60) * 1000;
+const _ociosoEnViaje = new Map<string, { desde: number; ultimo: number }>();
+function _vigilarLatidoSinServicio(
+  ws: WebSocket,
+  driverId: string,
+  antes: string | null,
+  tripId: string | null,
+): void {
+  if (antes !== 'ON_TRIP' || tripId !== null) { _ociosoEnViaje.delete(driverId); return; }
+  if (driverConnections.get(driverId)?.ws !== ws) return;
+  const ahora = Date.now();
+  const v = _ociosoEnViaje.get(driverId);
+  if (!v || ahora - v.ultimo > 30_000) {
+    _ociosoEnViaje.set(driverId, { desde: ahora, ultimo: ahora });
+    return;
+  }
+  v.ultimo = ahora;
+  if (ahora - v.desde < OCIOSO_EN_VIAJE_MS) return;
+  _ociosoEnViaje.delete(driverId);
+  void liberarConductorOcioso(driverId).then((r) => {
+    if (!r.liberado) return;
+    console.warn(
+      `[Despacho] Conductor ${driverId} devuelto al despacho: estaba «en viaje» y latía sin ` +
+        `servicio en pantalla. Servicios sin cerrar: ${r.huerfanos.join(', ') || 'ninguno'}`,
+    );
+  });
 }
 
 /**
@@ -1559,6 +1603,7 @@ function onClose(ws: WebSocket): void {
   const eraLaVigente = driverId != null && driverConnections.get(driverId)?.ws === ws;
   if (driverId && eraLaVigente) {
     driverConnections.delete(driverId);
+    _ociosoEnViaje.delete(driverId);
     driverActiveTripIdMap.delete(driverId);
     driverActiveErrandIdMap.delete(driverId);
   }

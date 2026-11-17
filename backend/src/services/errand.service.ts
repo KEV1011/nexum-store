@@ -133,6 +133,9 @@ export async function requestClientErrand(
       // Se persisten para poder reanudar la búsqueda si el ciclo se pierde.
       pickupLat: dto.pickupLat ?? null,
       pickupLng: dto.pickupLng ?? null,
+      // El segundo sitio donde se busca repartidor, y el destino real del mapa.
+      dropoffLat: dto.dropoffLat ?? null,
+      dropoffLng: dto.dropoffLng ?? null,
       serviceFee: ERRAND_SERVICE_FEE,
       purchaseBudget: dto.purchaseBudget ?? null,
       notes: dto.notes ?? null,
@@ -498,12 +501,13 @@ export async function reabrirBusquedaMandado(
   if (r.count === 0) return null;
   const e = await prisma.errand.findUnique({
     where: { id: errandId },
-    select: { pickupLat: true, pickupLng: true },
+    select: { pickupLat: true, pickupLng: true, dropoffLat: true, dropoffLng: true },
   });
   void avisarEstadoMandado(errandId);
+  // Sin punto de recogida se busca donde está el cliente, no en Pamplona.
   return {
-    lat: e?.pickupLat ?? INTERCITY_CITY_COORDS.pamplona.lat,
-    lng: e?.pickupLng ?? INTERCITY_CITY_COORDS.pamplona.lng,
+    lat: e?.pickupLat ?? e?.dropoffLat ?? INTERCITY_CITY_COORDS.pamplona.lat,
+    lng: e?.pickupLng ?? e?.dropoffLng ?? INTERCITY_CITY_COORDS.pamplona.lng,
   };
 }
 
@@ -512,6 +516,7 @@ export function toErrandRequestDTO(errand: {
   dropoffAddress: string; serviceFee: number; purchaseBudget: number | null;
   notes: string | null;
   pickupLat?: number | null; pickupLng?: number | null;
+  dropoffLat?: number | null; dropoffLng?: number | null;
 }): ErrandRequestDTO {
   return {
     id: errand.id,
@@ -527,6 +532,8 @@ export function toErrandRequestDTO(errand: {
     // sabía a dónde ir a comprar.
     ...(errand.pickupLat != null ? { pickupLat: errand.pickupLat } : {}),
     ...(errand.pickupLng != null ? { pickupLng: errand.pickupLng } : {}),
+    ...(errand.dropoffLat != null ? { dropoffLat: errand.dropoffLat } : {}),
+    ...(errand.dropoffLng != null ? { dropoffLng: errand.dropoffLng } : {}),
   };
 }
 

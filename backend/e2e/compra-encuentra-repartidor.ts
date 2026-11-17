@@ -80,13 +80,16 @@ async function main(): Promise<void> {
   }
 
   /** Lo mismo que hace `POST /client/comercios/:id/comprar`. */
-  async function comprar(businessId: string, productId: string) {
+  async function comprar(
+    businessId: string, productId: string,
+    entrega: { lat: number; lng: number } = CERCA_PAMPLONA,
+  ) {
     const r = await comprarEnComercio(cliente.id, {
       businessId,
       items: [{ productId, quantity: 1 }],
       dropoffAddress: 'Carrera 6 # 8-20',
-      dropoffLat: CERCA_PAMPLONA.lat,
-      dropoffLng: CERCA_PAMPLONA.lng,
+      dropoffLat: entrega.lat,
+      dropoffLng: entrega.lng,
     });
     await matching.startErrandMatchingCycle(r.errand.id, r.ancla.lat, r.ancla.lng);
     await espera(300);
@@ -121,14 +124,48 @@ async function main(): Promise<void> {
     comprobar('el mandado no lleva el pin de Bogotá', e.pickupLat == null || Math.abs(e.pickupLat - 4.6) > 1, e.pickupLat);
   }
 
-  console.log('\n[3] Contraprueba: un local de verdad lejos no le ofrece al de Pamplona');
+  console.log('\n[3] Contraprueba: un local de Bogotá con entrega en Bogotá no le ofrece al de Pamplona');
   {
     ofertas.length = 0;
     const { b, p } = await ficha('En Bogotá', EN_BOGOTA, 'bogota');
-    const r = await comprar(b.id, p.id);
+    const r = await comprar(b.id, p.id, { lat: EN_BOGOTA.lat + 0.01, lng: EN_BOGOTA.lng });
     mandados.push(r.errand.id);
     comprobar('ancla en el local de Bogotá', r.ancla.origen === 'comercio', r.ancla);
     comprobar('la oferta NO sale para un repartidor a 400 km', !ofrecido(r.errand.id), ofertas.map((o) => o.msg['type']));
+  }
+
+  console.log('\n[3b] EL HUECO: local Y ciudad guardados en Bogotá, pero le piden desde Pamplona');
+  {
+    // La ciudad del local salió del mismo punto mal geocodificado, así que
+    // contra su propia ciudad «está bien». La entrega es lo único de fiar.
+    ofertas.length = 0;
+    const { b, p } = await ficha('Todo en Bogotá', EN_BOGOTA, 'bogota');
+    const r = await comprar(b.id, p.id);
+    mandados.push(r.errand.id);
+    comprobar('NO ancla en Bogotá: busca donde está el cliente', r.ancla.origen === 'entrega', r.ancla);
+    comprobar('la oferta le llega al repartidor de Pamplona', ofrecido(r.errand.id), ofertas.map((o) => o.msg['type']));
+    const e = await prisma.errand.findUniqueOrThrow({ where: { id: r.errand.id } });
+    comprobar('el mandado no lleva el pin de Bogotá', e.pickupLat == null, e.pickupLat);
+    comprobar('y guarda el punto de entrega', e.dropoffLat === CERCA_PAMPLONA.lat && e.dropoffLng === CERCA_PAMPLONA.lng, e);
+    const oferta = ofertas.find((o) => (o.msg['errand'] as { id?: string })?.id === r.errand.id);
+    comprobar('la oferta le dice al repartidor a dónde se entrega',
+      (oferta?.msg['errand'] as { dropoffLat?: number })?.dropoffLat === CERCA_PAMPLONA.lat, oferta?.msg['errand']);
+    // Tras un reinicio el rescate solo tiene lo guardado: tiene que volver a
+    // buscar donde está el cliente, no en el centro de Pamplona por defecto.
+    matching.cancelSearchRetry(`errand:${r.errand.id}`);
+  }
+
+  console.log('\n[3c] Local a 9 km sin nadie cerca: se ofrece a quien está junto al cliente');
+  {
+    ofertas.length = 0;
+    const A_9_KM = { lat: CERCA_PAMPLONA.lat + 0.081, lng: CERCA_PAMPLONA.lng };
+    const { b, p } = await ficha('En la vereda', A_9_KM, 'pamplona');
+    const r = await comprar(b.id, p.id);
+    mandados.push(r.errand.id);
+    comprobar('ancla en el local (su punto es creíble)', r.ancla.origen === 'comercio', r.ancla);
+    comprobar('nadie cerca del local, pero la oferta sale por el segundo sitio', ofrecido(r.errand.id), ofertas.map((o) => o.msg['type']));
+    const e = await prisma.errand.findUniqueOrThrow({ where: { id: r.errand.id } });
+    comprobar('el mandado conserva el pin del local', e.pickupLat === A_9_KM.lat, e.pickupLat);
   }
 
   console.log('\n[4] Abrir ficha con ciudad, sin geocodificador: queda en su ciudad y despacha');

@@ -208,6 +208,21 @@ void main() {
       expect(o.destination.address, 'Calle 9 #2-30');
     });
 
+    test('el destino es el punto de entrega que eligió el cliente', () {
+      final conPunto = crudo()
+        ..['dropoffLat'] = 7.3801
+        ..['dropoffLng'] = -72.6522;
+      final o = ofertaDeMandado(conPunto)!;
+      expect(o.destination.latitude, 7.3801);
+      expect(o.destination.longitude, -72.6522);
+    });
+
+    test('sin punto de entrega el destino cae al centro, no revienta', () {
+      final o = ofertaDeMandado(crudo())!;
+      expect(o.destination.latitude, MapConstants.pamplonaCenterLat);
+      expect(o.destination.longitude, MapConstants.pamplonaCenterLng);
+    });
+
     test('sin presupuesto de compra queda vacío, no en cero', () {
       final sinPresupuesto = crudo()..remove('purchaseBudget');
       expect(ofertaDeMandado(sinPresupuesto)!.errand!.purchaseBudget, isNull);

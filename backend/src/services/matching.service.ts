@@ -10,6 +10,7 @@ import { avisarEstadoMandado, getErrandOfferInfo } from './errand.service';
 import { getOrderOfferInfo } from './order-offer.service';
 import { evaluateGeoJump } from './fraud.service';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
+import { mismoSitio, puntoValido } from '../lib/ubicacion-comercio';
 import { onDriverHeartbeat } from './safety-alerts.service';
 import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
@@ -960,11 +961,11 @@ export async function startErrandMatchingCycle(
 
   const duenoMandado = await prisma.errand.findUnique({
     where: { id: errandId },
-    select: { userId: true },
+    select: { userId: true, dropoffLat: true, dropoffLng: true },
   });
-  const candidates = await findNearestAvailableDrivers(
-    pickupLat,
-    pickupLng,
+  const buscarCercaDe = (lat: number, lng: number) => findNearestAvailableDrivers(
+    lat,
+    lng,
     SEARCH_RADIUS_M,
     MAX_CANDIDATES,
     GEO_FRESHNESS_S,
@@ -972,6 +973,24 @@ export async function startErrandMatchingCycle(
     null,
     duenoMandado?.userId ?? null,
   );
+  let candidates = await buscarCercaDe(pickupLat, pickupLng);
+  // SEGUNDO SITIO: la puerta del cliente. El punto de recogida de una compra
+  // lo puso un geocodificador a partir de la dirección del local y puede
+  // estar a kilómetros de donde de verdad queda; el de entrega lo eligió una
+  // persona que está ahí. Si cerca de la recogida no hay nadie, quien esté
+  // cerca del cliente puede ir: lee la dirección del local en la oferta.
+  if (candidates.length === 0) {
+    const entrega = { lat: duenoMandado?.dropoffLat ?? NaN, lng: duenoMandado?.dropoffLng ?? NaN };
+    if (puntoValido(entrega) && !mismoSitio(entrega, { lat: pickupLat, lng: pickupLng })) {
+      candidates = await buscarCercaDe(entrega.lat, entrega.lng);
+      if (candidates.length > 0) {
+        console.log(
+          `[Matching] Mandado ${errandId}: nadie cerca de la recogida; se ofrece a quien está ` +
+            'cerca de la entrega',
+        );
+      }
+    }
+  }
   if (candidates.length === 0) {
     console.log(
       `[Matching] No drivers available within ${SEARCH_RADIUS_M}m for errand ${errandId} ` +

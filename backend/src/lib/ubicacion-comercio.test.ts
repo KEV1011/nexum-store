@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  COMPRA_MAX_KM,
   anclaDeCompra,
+  localLejosDeLaEntrega,
+  mismoSitio,
   decidirUbicacion,
   kmEntre,
   motivoUbicacionDudosa,
@@ -66,6 +69,44 @@ describe('dónde se busca repartidor para comprar', () => {
   it('un local sin ciudad declarada pero con punto se da por bueno', () => {
     expect(puntoConfiable(EN_BOGOTA, null)).toBe(true);
     expect(puntoConfiable(EN_BOGOTA, PAMPLONA)).toBe(false);
+  });
+
+  // EL HUECO: el local está «bien» contra su propia ciudad —punto en Bogotá,
+  // ciudad Bogotá, porque la ciudad se le puso a partir de ese mismo punto— y
+  // es un restaurante de Pamplona al que le pide alguien de Pamplona.
+  it('local y ciudad en Bogotá, entrega en Pamplona: se busca donde está el cliente', () => {
+    const BOGOTA = { lat: 4.711, lng: -74.0721 };
+    expect(anclaDeCompra(EN_BOGOTA, BOGOTA, ENTREGA, POR_DEFECTO))
+      .toMatchObject({ origen: 'entrega', ...ENTREGA });
+  });
+
+  it('local lejos de la entrega y sin ciudad: también la entrega', () => {
+    expect(anclaDeCompra(EN_BOGOTA, null, ENTREGA, POR_DEFECTO))
+      .toMatchObject({ origen: 'entrega', ...ENTREGA });
+  });
+
+  it('un local a distancia de compra sigue anclando en el local', () => {
+    const A_8_KM = { lat: ENTREGA.lat + 0.072, lng: ENTREGA.lng };
+    expect(kmEntre(A_8_KM, ENTREGA)).toBeLessThan(COMPRA_MAX_KM);
+    expect(anclaDeCompra(A_8_KM, PAMPLONA, ENTREGA, POR_DEFECTO)).toMatchObject({ origen: 'comercio' });
+  });
+
+  it('sin entrega no hay contra qué medir: se hace lo de antes', () => {
+    expect(anclaDeCompra(EN_BOGOTA, null, null, POR_DEFECTO)).toMatchObject({ origen: 'comercio' });
+    expect(anclaDeCompra(EN_BOGOTA, PAMPLONA, null, POR_DEFECTO)).toMatchObject({ origen: 'ciudad' });
+  });
+
+  it('dice cuándo el punto del local contradice a la entrega', () => {
+    expect(localLejosDeLaEntrega(EN_BOGOTA, ENTREGA)).toBe(true);
+    expect(localLejosDeLaEntrega(EN_PAMPLONA, ENTREGA)).toBe(false);
+    expect(localLejosDeLaEntrega(null, ENTREGA)).toBe(false);
+    expect(localLejosDeLaEntrega(EN_BOGOTA, null)).toBe(false);
+  });
+
+  it('dos puntos a menos de 300 m son el mismo sitio para el despacho', () => {
+    expect(mismoSitio(ENTREGA, { lat: ENTREGA.lat + 0.001, lng: ENTREGA.lng })).toBe(true);
+    expect(mismoSitio(ENTREGA, EN_BOGOTA)).toBe(false);
+    expect(mismoSitio(ENTREGA, null)).toBe(false);
   });
 });
 

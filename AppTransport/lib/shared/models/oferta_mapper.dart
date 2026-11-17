@@ -183,9 +183,13 @@ TripRequestEntity? ofertaDeMandado(Map<String, dynamic> e) {
         longitude: (e['pickupLng'] as num?)?.toDouble() ?? pamplonaCenterLng,
         address: e['pickupAddress'] as String? ?? '',
       ),
+      // El punto de entrega que eligió el cliente, cuando el servidor lo
+      // manda. Antes el destino se pintaba SIEMPRE en el centro del pueblo y
+      // la ruta del repartidor terminaba ahí. Sin punto (dirección escrita a
+      // mano, o servidor anterior) se cae al centro, con la dirección al lado.
       destination: LocationModel(
-        latitude: pamplonaCenterLat,
-        longitude: pamplonaCenterLng,
+        latitude: (e['dropoffLat'] as num?)?.toDouble() ?? pamplonaCenterLat,
+        longitude: (e['dropoffLng'] as num?)?.toDouble() ?? pamplonaCenterLng,
         address: e['dropoffAddress'] as String? ?? '',
       ),
       distanceKm: 0,
