@@ -142,6 +142,10 @@ class PooledSeatBooking {
     this.discount = 0,
     this.promoCode,
     this.passengers = const [],
+    this.pickupLat,
+    this.pickupLng,
+    this.paymentLabel,
+    this.passengerRating,
   });
 
   final String id;
@@ -172,6 +176,20 @@ class PooledSeatBooking {
   /// concreto y lo único cierto es cuántos puestos compró.
   final List<int> seats;
 
+  /// Dónde recogerlo en el mapa (viaje por puestos urbano). Los dos o ninguno:
+  /// sin punto no se ofrece navegar, en vez de mandar al conductor a un sitio
+  /// inventado.
+  final double? pickupLat;
+  final double? pickupLng;
+  bool get tienePunto => pickupLat != null && pickupLng != null;
+
+  /// Cómo va a pagar, ya redactado por el servidor («Nequi», «Pago no
+  /// indicado»): si lo tradujera la app, una versión diría otra cosa.
+  final String? paymentLabel;
+
+  /// La nota que el conductor ya le puso, si se la puso.
+  final int? passengerRating;
+
   /// Lo que el conductor necesita leer en la puerta del vehículo: «Silla 3» o
   /// «Sillas 3, 4». Sin numeración cae a los puestos, que es la información
   /// que de verdad hay — inventar un número aquí sentaría a alguien donde no
@@ -200,6 +218,10 @@ class PooledSeatBooking {
           for (final s in (j['seats'] as List<dynamic>? ?? const []))
             if (s is num) s.toInt(),
         ],
+        pickupLat: j['pickupLng'] is num ? (j['pickupLat'] as num?)?.toDouble() : null,
+        pickupLng: j['pickupLat'] is num ? (j['pickupLng'] as num?)?.toDouble() : null,
+        paymentLabel: j['paymentLabel'] as String?,
+        passengerRating: (j['passengerRating'] as num?)?.toInt(),
       );
 }
 
@@ -225,6 +247,12 @@ class PooledTripEntity {
     this.esUrbano = false,
     this.routeName,
     this.savingsPerSeat,
+    this.originLabel,
+    this.destLabel,
+    this.originLat,
+    this.originLng,
+    this.destLat,
+    this.destLng,
   });
 
   final String id;
@@ -260,6 +288,19 @@ class PooledTripEntity {
   /// por el servidor.
   final double? savingsPerSeat;
 
+  /// Los extremos REALES de un viaje urbano: dónde arranca y a dónde va dentro
+  /// de la ciudad. `origin`/`destination` son el municipio (el mismo en los
+  /// dos), y dibujar el trayecto con ellos ponía un solo pin en el centro del
+  /// pueblo — era el «no se ve el trayecto».
+  final String? originLabel;
+  final String? destLabel;
+  final double? originLat;
+  final double? originLng;
+  final double? destLat;
+  final double? destLng;
+  bool get tieneExtremos =>
+      originLat != null && originLng != null && destLat != null && destLng != null;
+
   int get bookedSeats => totalSeats - availableSeats;
 
   /// Cómo se llama esta salida en una línea.
@@ -272,8 +313,11 @@ class PooledTripEntity {
         tripRef: j['tripRef'] as String? ?? '',
         origin: PooledCity.fromApi(j['origin'] as String?),
         destination: PooledCity.fromApi(j['destination'] as String?),
+        // EN HORA LOCAL: el servidor manda UTC («…T22:11:00Z») y sin `toLocal`
+        // la tarjeta decía «22:11» para un viaje de las 17:11.
         departureTime:
-            DateTime.tryParse(j['departureTime'] as String? ?? '') ?? DateTime.now(),
+            DateTime.tryParse(j['departureTime'] as String? ?? '')?.toLocal() ??
+                DateTime.now(),
         totalSeats: (j['totalSeats'] as num?)?.toInt() ?? 0,
         availableSeats: (j['availableSeats'] as num?)?.toInt() ?? 0,
         farePerSeat: (j['farePerSeat'] as num?)?.toDouble() ?? 0,
@@ -296,5 +340,11 @@ class PooledTripEntity {
         esUrbano: j['kind'] == 'urbano',
         routeName: j['routeName'] as String?,
         savingsPerSeat: (j['savingsPerSeat'] as num?)?.toDouble(),
+        originLabel: j['originLabel'] as String?,
+        destLabel: j['destLabel'] as String?,
+        originLat: (j['originLat'] as num?)?.toDouble(),
+        originLng: (j['originLng'] as num?)?.toDouble(),
+        destLat: (j['destLat'] as num?)?.toDouble(),
+        destLng: (j['destLng'] as num?)?.toDouble(),
       );
 }

@@ -109,6 +109,9 @@ class SeatBookingEntity {
     this.amountToPay,
     this.ticketCode,
     this.boardedAt,
+    this.pickupLat,
+    this.pickupLng,
+    this.paymentLabel,
   });
 
   final String id;
@@ -151,6 +154,14 @@ class SeatBookingEntity {
   /// Si el tiquete sigue sirviendo para subir.
   bool get tiqueteUsado => boardedAt != null;
 
+  /// Dónde lo recogen en un viaje por puestos urbano: el punto que marcó en
+  /// el mapa. Los dos o ninguno.
+  final double? pickupLat;
+  final double? pickupLng;
+
+  /// Cómo le paga al conductor, ya redactado por el servidor.
+  final String? paymentLabel;
+
   /// Lo que hay que enseñarle al subir: «Silla 4» o «Sillas 3, 4». Sin
   /// numeración cae a los puestos, que es lo único cierto ahí — un número
   /// inventado lo sentaría donde no le toca.
@@ -181,6 +192,9 @@ class SeatBookingEntity {
         // `tryParse` y no `parse`: una fecha que no se entienda no puede
         // tumbar la pantalla donde el pasajero busca su tiquete.
         boardedAt: DateTime.tryParse(j['boardedAt'] as String? ?? ''),
+        pickupLat: j['pickupLng'] is num ? (j['pickupLat'] as num?)?.toDouble() : null,
+        pickupLng: j['pickupLat'] is num ? (j['pickupLng'] as num?)?.toDouble() : null,
+        paymentLabel: j['paymentLabel'] as String?,
       );
 }
 
@@ -397,8 +411,11 @@ class PooledTripEntity {
         vehicleDescription: j['vehicleDescription'] as String? ?? '',
         origin: _cityFromApi(j['origin'] as String?),
         destination: _cityFromApi(j['destination'] as String?),
+        // EN HORA LOCAL: el servidor manda UTC y sin `toLocal` la tarjeta decía
+        // «sale a las 22:11» para un viaje de las 17:11.
         departureTime:
-            DateTime.tryParse(j['departureTime'] as String? ?? '') ?? DateTime.now(),
+            DateTime.tryParse(j['departureTime'] as String? ?? '')?.toLocal() ??
+                DateTime.now(),
         totalSeats: (j['totalSeats'] as num?)?.toInt() ?? 0,
         availableSeats: (j['availableSeats'] as num?)?.toInt() ?? 0,
         farePerSeat: (j['farePerSeat'] as num?)?.toDouble() ?? 0,

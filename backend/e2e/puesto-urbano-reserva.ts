@@ -144,7 +144,13 @@ async function main() {
 
     const reserva = await pedir('POST', `/client/intercity/pool/${urbano?.id}/book`, {
       token: tokenB,
-      body: { seatsBooked: 3, pickupAddress: 'Parque principal' },
+      // Con el punto en el mapa: desde que la recogida es obligatoria en el
+      // puesto urbano, una reserva sin punto se rechaza (ver
+      // e2e/puesto-viaje-completo.ts).
+      body: {
+        seatsBooked: 3, pickupAddress: 'Parque principal',
+        pickupLat: 7.3760, pickupLng: -72.6470,
+      },
     });
     check(reserva.status === 201, 'la reserva del puesto URBANO entra (201)', reserva);
     check(

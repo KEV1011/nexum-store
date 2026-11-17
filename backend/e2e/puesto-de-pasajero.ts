@@ -255,7 +255,8 @@ async function main() {
     check(!enCucuta.some((t) => t.id === salidaId), 'y NO en el de otra ciudad');
 
     const { trip } = await bookSeats(otro.id, `${marca} Otro`, otro.phone, salidaId, {
-      seatsBooked: 2,
+      // La recogida es obligatoria en el puesto urbano (punto en el mapa).
+      seatsBooked: 2, pickupAddress: 'Parque principal', pickupLat: 7.3760, pickupLng: -72.6480,
     } as never);
     check(trip.availableSeats === 1, 'otro pasajero se suma y quedan los puestos justos', trip.availableSeats);
   }

@@ -305,6 +305,24 @@ class PooledDriverNotifier extends StateNotifier<PooledDriverState> {
     return error;
   }
 
+  /// Califica a un pasajero de un viaje por puestos ya terminado. `null` = se
+  /// guardó; si no, el motivo del servidor (p. ej. el viaje aún no termina).
+  Future<String?> calificarPasajero(String bookingId, int estrellas) async {
+    String? error;
+    try {
+      await _client.post<Map<String, dynamic>>(
+        '/driver/pool/bookings/$bookingId/rate-passenger',
+        data: {'rating': estrellas},
+      );
+    } on AppException catch (e) {
+      error = _extractError(e) ?? 'No se pudo guardar la calificación.';
+    } catch (_) {
+      error = 'No se pudo guardar la calificación. Revisa tu conexión.';
+    }
+    if (error == null) await loadMine();
+    return error;
+  }
+
   /// Devuelven `null` si el backend aceptó la acción, o el mensaje de error a
   /// mostrar. Antes se tragaban el error y "Iniciar" parecía no hacer nada.
   Future<String?> depart(String tripId) => _action(tripId, 'depart');

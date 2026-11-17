@@ -22,6 +22,21 @@ void main() {
       );
     });
 
+    test('el viaje por puestos lleva a SU pantalla; sin id, a la lista', () {
+      for (final t in [
+        'pooled_urban_tomado',
+        'pooled_urban_iniciado',
+        'pooled_urban_terminado',
+        'pooled_urban_cancelado',
+      ]) {
+        expect(
+          rutaDeNotificacion({'type': t, 'tripId': 'p1'}),
+          '/puesto-urbano/viaje/p1',
+        );
+        expect(rutaDeNotificacion({'type': t}), AppRoutes.puestoUrbano);
+      }
+    });
+
     test('el viaje en curso lleva al seguimiento, con su id', () {
       const id = 'trip_abc123';
       for (final t in ['trip_accepted', 'trip_arrived', 'trip_in_progress']) {

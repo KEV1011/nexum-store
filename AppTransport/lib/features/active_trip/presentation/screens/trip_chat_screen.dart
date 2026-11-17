@@ -42,6 +42,7 @@ class _TripMsg {
     required this.body,
     required this.imageUrl,
     required this.sentAt,
+    this.senderName,
   });
   final String id;
   final bool mine;
@@ -49,12 +50,17 @@ class _TripMsg {
   final String? imageUrl;
   final DateTime sentAt;
 
+  /// Quién lo escribió. Solo llega en el chat de un viaje por PUESTOS, donde
+  /// hablan varios pasajeros a la vez y «un pasajero» no dice quién.
+  final String? senderName;
+
   factory _TripMsg.fromJson(Map<String, dynamic> j) => _TripMsg(
         id: (j['id'] as String?) ?? '',
         mine: (j['senderRole'] as String?) == 'driver',
         body: (j['body'] as String?) ?? '',
         imageUrl: j['imageUrl'] as String?,
         sentAt: DateTime.tryParse((j['sentAt'] as String?) ?? '')?.toLocal() ?? DateTime.now(),
+        senderName: j['senderName'] as String?,
       );
 }
 
@@ -362,6 +368,18 @@ class _Bubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
+            if (!mine && msg.senderName != null)
+              Padding(
+                padding: EdgeInsets.fromLTRB(hasImage ? 6 : 0, hasImage ? 2 : 0, 0, 2),
+                child: Text(
+                  msg.senderName!,
+                  style: TextStyle(
+                    color: context.textSecondaryColor,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             if (hasImage)
               GestureDetector(
                 onTap: () => onTapImage(msg.imageUrl!),

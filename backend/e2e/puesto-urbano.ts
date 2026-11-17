@@ -266,12 +266,17 @@ async function main() {
   {
     const r1 = await bookSeats(pasajero1.id, 'Uno', pasajero1.phone, salidaId, {
       seatsBooked: 1, pickupAddress: 'Calle 6 # 4-20',
+      // La recogida es obligatoria en el puesto urbano (punto en el mapa).
+      pickupLat: 7.3760, pickupLng: -72.6480,
     });
     check(r1.trip.availableSeats === 3, 'queda un puesto menos', r1.trip.availableSeats);
     check(r1.booking.fareTotal === precioPuesto, 'con el precio sellado en la reserva', r1.booking.fareTotal);
     check(r1.booking.pickupAddress === 'Calle 6 # 4-20', 'y con dónde recogerlo: el taxi pasa por su casa');
 
-    const r2 = await bookSeats(pasajero2.id, 'Dos', pasajero2.phone, salidaId, { seatsBooked: 2 });
+    const r2 = await bookSeats(pasajero2.id, 'Dos', pasajero2.phone, salidaId, {
+      // La recogida es obligatoria en el puesto urbano (punto en el mapa).
+      seatsBooked: 2, pickupAddress: 'Plaza', pickupLat: 7.3750, pickupLng: -72.6490,
+    });
     check(r2.trip.availableSeats === 1, 'y dos menos con la segunda reserva', r2.trip.availableSeats);
   }
 

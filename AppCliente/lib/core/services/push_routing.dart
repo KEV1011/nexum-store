@@ -84,6 +84,28 @@ String? rutaDeNotificacion(Map<String, dynamic> data) {
     case 'errand_no_driver':
       return AppRoutes.errandStatus;
 
+    // Viaje por puestos urbano: lo tomó un taxista, arrancó, terminó (para
+    // calificar) o se canceló. Todos a SU pantalla, que es donde se ve el
+    // estado, el mapa y el chat; sin id, a la lista de viajes por puestos.
+    case 'pooled_urban_tomado':
+    case 'pooled_urban_iniciado':
+    case 'pooled_urban_terminado':
+    case 'pooled_urban_cancelado':
+      return tripId is String && tripId.isNotEmpty
+          ? AppRoutes.puestoViajePath(tripId)
+          : AppRoutes.puestoUrbano;
+
+    // Viaje por puestos urbano: lo tomó un taxista, arrancó, terminó (para
+    // calificar) o se canceló. Todos a SU pantalla, que es donde se ve el
+    // estado, el mapa y el chat; sin id, a la lista de viajes por puestos.
+    case 'pooled_urban_tomado':
+    case 'pooled_urban_iniciado':
+    case 'pooled_urban_terminado':
+    case 'pooled_urban_cancelado':
+      return tripId is String && tripId.isNotEmpty
+          ? AppRoutes.puestoViajePath(tripId)
+          : AppRoutes.puestoUrbano;
+
     case 'intercity_update':
     case 'intercity_cancelled':
     case 'intercity_no_driver':

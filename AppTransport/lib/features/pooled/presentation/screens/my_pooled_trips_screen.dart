@@ -11,6 +11,10 @@ import 'package:nexum_driver/features/pooled/domain/entities/pooled_trip_entity.
 import 'package:nexum_driver/features/pooled/presentation/providers/pooled_driver_provider.dart';
 import 'package:nexum_driver/shared/services/abordaje_tiquete.dart';
 import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
+import 'package:nexum_driver/features/active_trip/presentation/screens/trip_chat_screen.dart';
+import 'package:nexum_driver/features/pooled/domain/orden_recogidas.dart';
+import 'package:nexum_driver/features/pooled/presentation/widgets/ruta_puestos_map.dart';
+import 'package:nexum_driver/shared/services/navegacion_externa.dart';
 import 'package:nexum_driver/app/theme/contraste.dart';
 
 const _kPooledColor = Color(0xFF1E3A8A);
@@ -192,6 +196,20 @@ class _MyPooledTripsScreenState extends ConsumerState<MyPooledTripsScreen> {
                     // ya publicada y antes de cerrarla. Después de terminar
                     // no hay a quién subir.
                     onAbordar: () => _abrirAbordaje(trip.id),
+                    // El chat del viaje por puestos es de GRUPO: el taxista
+                    // y todos los que reservaron.
+                    onChat: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => TripChatScreen(
+                          tripId: trip.id,
+                          peerName: 'Pasajeros del viaje',
+                        ),
+                      ),
+                    ),
+                    onCalificar: (b, estrellas) => _run(
+                      () => notifier.calificarPasajero(b.id, estrellas),
+                      'Calificación guardada.',
+                    ),
                     onCancel: () => _confirm(
                       'Cancelar viaje',
                       'Se cancelará el viaje y se notificará a los pasajeros.',
@@ -302,6 +320,8 @@ class _PooledTripCard extends StatelessWidget {
     required this.onComplete,
     required this.onAbordar,
     required this.onCancel,
+    required this.onChat,
+    required this.onCalificar,
   });
 
   final PooledTripEntity trip;
@@ -309,6 +329,30 @@ class _PooledTripCard extends StatelessWidget {
   final VoidCallback onComplete;
   final VoidCallback onAbordar;
   final VoidCallback onCancel;
+  final VoidCallback onChat;
+  final void Function(PooledSeatBooking booking, int estrellas) onCalificar;
+
+  /// Las recogidas del viaje urbano, en el orden en que conviene hacerlas.
+  /// Solo las que tienen punto: sin punto no hay dónde dibujarlas ni a dónde
+  /// navegar, y esas se listan aparte.
+  List<PuntoRecogida> get _recogidas => trip.tieneExtremos
+      ? ordenarRecogidas(trip.originLat!, trip.originLng!, [
+          for (final b in trip.bookings)
+            if (b.tienePunto)
+              PuntoRecogida(
+                bookingId: b.id,
+                nombre: b.passengerName,
+                direccion: b.pickupAddress,
+                lat: b.pickupLat!,
+                lng: b.pickupLng!,
+              ),
+        ])
+      : const [];
+
+  bool get _activo =>
+      trip.status == PooledTripStatus.open ||
+      trip.status == PooledTripStatus.full ||
+      trip.status == PooledTripStatus.departed;
 
   @override
   Widget build(BuildContext context) {
@@ -389,7 +433,19 @@ class _PooledTripCard extends StatelessWidget {
           // el conductor ve por dónde va la salida de un vistazo. Si alguno de
           // los municipios llegó sin coordenadas, no se dibuja nada: mejor sin
           // mapa que con un trayecto inventado.
-          if (trip.origin.coords != null && trip.destination.coords != null)
+          // Viaje URBANO: el trayecto real dentro de la ciudad, pasando por
+          // cada pasajero. Con los centroides del municipio salía un solo pin.
+          if (trip.esUrbano && trip.tieneExtremos)
+            RutaPuestosMap(
+              originLat: trip.originLat!,
+              originLng: trip.originLng!,
+              destLat: trip.destLat!,
+              destLng: trip.destLng!,
+              recogidas: _recogidas,
+            )
+          else if (!trip.esUrbano &&
+              trip.origin.coords != null &&
+              trip.destination.coords != null)
             FreightRouteMap(
               originLat: trip.origin.coords!.lat,
               originLng: trip.origin.coords!.lng,
@@ -443,7 +499,9 @@ class _PooledTripCard extends StatelessWidget {
             ),
           ),
 
-          if (trip.bookings.isNotEmpty) ...[
+          if (trip.esUrbano && trip.bookings.isNotEmpty)
+            ..._recogidasUrbanas(context)
+          else if (trip.bookings.isNotEmpty) ...[
             const SizedBox(height: 12),
             ...trip.bookings.map((b) => Padding(
                   padding: const EdgeInsets.only(bottom: 6),
@@ -540,9 +598,171 @@ class _PooledTripCard extends StatelessWidget {
 
           const SizedBox(height: 12),
           _actions(),
+          // El chat del grupo, mientras el viaje está vivo y hay con quién
+          // hablar. Va aparte de las acciones para no apretar la fila.
+          if (trip.esUrbano && _activo && trip.bookings.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: onChat,
+              icon: const Icon(Icons.chat_bubble_outline_rounded, size: 18),
+              label: const Text('Chat con los pasajeros'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _kPooledColor,
+                side: const BorderSide(color: _kPooledColor),
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  /// La lista del viaje urbano: a quién recoger, dónde, en qué orden, cuánto
+  /// cobrarle y cómo paga — con un botón para navegar a cada punto.
+  ///
+  /// Era lo que faltaba al tomar el viaje: el taxista veía nombres y un texto
+  /// de dirección (o nada) y tenía que adivinar por quién pasar primero.
+  List<Widget> _recogidasUrbanas(BuildContext context) {
+    final ordenadas = _recogidas;
+    final porId = {for (final b in trip.bookings) b.id: b};
+    final sinPunto = trip.bookings.where((b) => !b.tienePunto).toList();
+    final terminado = trip.status == PooledTripStatus.completed;
+
+    Widget fila(PooledSeatBooking b, String? numero) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: numero == null
+                      ? context.surfaceVariantColor
+                      : _kPooledColor,
+                  shape: BoxShape.circle,
+                ),
+                child: numero == null
+                    ? Icon(Icons.person_rounded,
+                        size: 15, color: context.textSecondaryColor)
+                    : Text(
+                        numero,
+                        style: TextStyle(
+                          color: colorDeTextoSobre(_kPooledColor),
+                          fontWeight: FontWeight.w800,
+                          fontSize: 12.5,
+                        ),
+                      ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${b.passengerName} · ${b.seatLabel}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: context.textPrimaryColor,
+                      ),
+                    ),
+                    Text(
+                      (b.pickupAddress?.isNotEmpty ?? false)
+                          ? b.pickupAddress!
+                          : 'Sin punto de recogida: escríbele por el chat',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: context.textSecondaryColor,
+                      ),
+                    ),
+                    if (b.amountToPay != null)
+                      Text(
+                        'Cobrar ${CurrencyFormatter.format(b.amountToPay!)}'
+                        ' · ${b.paymentLabel ?? 'Pago no indicado'}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: context.textPrimaryColor,
+                        ),
+                      ),
+                    // Al terminar, calificar a cada pasajero. Corregible: la
+                    // estrella marcada es la que ya puso.
+                    if (terminado)
+                      _Estrellas(
+                        valor: b.passengerRating,
+                        onElegir: (n) => onCalificar(b, n),
+                      ),
+                  ],
+                ),
+              ),
+              if (_activo && b.tienePunto)
+                IconButton(
+                  tooltip: 'Navegar a la recogida de ${b.passengerName}',
+                  icon: const Icon(Icons.navigation_rounded,
+                      color: _kPooledColor),
+                  onPressed: () => _navegar(
+                    context,
+                    Destino(
+                      lat: b.pickupLat!,
+                      lng: b.pickupLng!,
+                      etiqueta: b.pickupAddress,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+
+    return [
+      const SizedBox(height: 14),
+      Text(
+        terminado ? 'Califica a tus pasajeros' : 'Recogidas en orden',
+        style: TextStyle(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w800,
+          color: context.textPrimaryColor,
+        ),
+      ),
+      const SizedBox(height: 8),
+      for (var i = 0; i < ordenadas.length; i++)
+        if (porId[ordenadas[i].bookingId] != null)
+          fila(porId[ordenadas[i].bookingId]!, '${i + 1}'),
+      for (final b in sinPunto) fila(b, null),
+      if (_activo && trip.tieneExtremos)
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => _navegar(
+              context,
+              Destino(
+                lat: trip.destLat!,
+                lng: trip.destLng!,
+                etiqueta: trip.destLabel,
+              ),
+            ),
+            icon: const Icon(Icons.flag_rounded, size: 18),
+            label: Text(
+              'Navegar al destino${trip.destLabel != null ? ': ${trip.destLabel}' : ''}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            style: TextButton.styleFrom(foregroundColor: _kPooledColor),
+          ),
+        ),
+    ];
+  }
+
+  Future<void> _navegar(BuildContext context, Destino destino) async {
+    final error = await abrirNavegacion(destino);
+    if (error != null && context.mounted) {
+      AppSnackbar.showError(context, error);
+    }
   }
 
 /// El botón de validar tiquetes. Icono y no texto: va al lado de acciones
@@ -969,6 +1189,36 @@ class _ResultadoTiquete extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Cinco estrellas para que el taxista califique a un pasajero al terminar.
+class _Estrellas extends StatelessWidget {
+  const _Estrellas({required this.valor, required this.onElegir});
+
+  final int? valor;
+  final ValueChanged<int> onElegir;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var n = 1; n <= 5; n++)
+          IconButton(
+            tooltip: '$n estrella${n == 1 ? '' : 's'}',
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            icon: Icon(
+              (valor ?? 0) >= n ? Icons.star_rounded : Icons.star_border_rounded,
+              color: const Color(0xFFF59E0B),
+              size: 24,
+            ),
+            onPressed: () => onElegir(n),
+          ),
+      ],
     );
   }
 }

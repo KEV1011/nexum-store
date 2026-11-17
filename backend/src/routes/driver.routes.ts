@@ -14,6 +14,7 @@ import {
   topeDelPuestoUrbano,
   listarPuestosSinConductor,
   tomarPuestoDePasajero,
+  calificarPasajeroDePuesto,
   plazaDelPasajero,
   PooledTripError,
 } from '../services/intercity-pool.service';
@@ -860,6 +861,24 @@ router.post('/pool/urbano/:id/tomar', async (req: Request, res: Response): Promi
     res.status(status).json({
       success: false,
       error: err instanceof Error ? err.message : 'No se pudo tomar el viaje',
+    });
+  }
+});
+
+// POST /driver/pool/bookings/:bookingId/rate-passenger — el conductor califica
+// a un pasajero de su viaje por puestos (solo terminado; corregible).
+router.post('/pool/bookings/:bookingId/rate-passenger', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const b = await calificarPasajeroDePuesto(
+      req.driverId!,
+      req.params['bookingId']!,
+      (req.body as { rating?: unknown })?.rating,
+    );
+    res.json({ success: true, data: b });
+  } catch (err) {
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'No se pudo calificar',
     });
   }
 });

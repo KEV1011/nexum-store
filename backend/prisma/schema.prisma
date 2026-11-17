@@ -1866,6 +1866,21 @@ model SeatBooking {
   /// Cuándo lo validó el conductor. Un tiquete aborda UNA sola vez: el
   /// segundo intento le dice al conductor que ya se usó, y a qué hora.
   boardedAt  DateTime?
+  /// Dónde recoger a esta persona en un viaje por puestos URBANO: el punto
+  /// que marcó en el mapa al reservar (obligatorio ahí). Sin el punto, el
+  /// taxista tenía un texto («Parque de los Enamorados») y ninguna forma de
+  /// verlo en el mapa ni de planear el orden de las recogidas. NULL en las
+  /// reservas intermunicipales y en las anteriores a la columna.
+  pickupLat  Float?
+  pickupLng  Float?
+  /// Cómo le va a pagar al conductor (`lib/metodos-pago.ts`). El puesto se
+  /// paga en la mano, así que solo valen los métodos que cobra el conductor.
+  /// NULL = no lo dijo (apps viejas): el conductor ve «no indicado», no un
+  /// «efectivo» inventado.
+  paymentMethod String?
+  /// La nota que el CONDUCTOR le puso a este pasajero (1-5). Va aparte de
+  /// `rating`, que es la que el pasajero le puso a la salida.
+  passengerRating Int?
 
   @@index([tripId])
   @@index([userId])

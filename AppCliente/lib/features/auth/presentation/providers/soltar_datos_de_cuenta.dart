@@ -22,6 +22,7 @@ import 'package:nexum_client/features/intercity/presentation/providers/intercity
 import 'package:nexum_client/features/orders/presentation/providers/orders_provider.dart';
 import 'package:nexum_client/features/payments/presentation/providers/payment_method_provider.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
+import 'package:nexum_client/features/pooled/presentation/providers/mis_viajes_puesto_provider.dart';
 import 'package:nexum_client/features/ride_negotiation/presentation/providers/ride_negotiation_provider.dart';
 import 'package:nexum_client/features/safety/presentation/providers/safety_provider.dart';
 import 'package:nexum_client/features/shell/presentation/providers/shell_provider.dart';
@@ -36,6 +37,7 @@ void soltarDatosDeCuenta(Ref ref) {
     ..invalidate(errandProvider)
     ..invalidate(intercityProvider)
     ..invalidate(pooledProvider)
+    ..invalidate(misViajesPuestoProvider)
     ..invalidate(rideNegotiationProvider)
     ..invalidate(addressesProvider)
     ..invalidate(favoritesProvider)
