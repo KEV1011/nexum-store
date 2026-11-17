@@ -19,6 +19,7 @@ import {
   atiendeDirecto,
   listaDeCompra,
   motivoParaNoComprar,
+  metodoDeCompra,
   presupuestoSugerido,
   sumaReferencial,
   type LineaDeCompra,
@@ -44,6 +45,8 @@ export interface ComprarEnComercioDTO {
   dropoffLat?: number;
   dropoffLng?: number;
   notes?: string;
+  /** Con qué le paga al repartidor al entregar. Ver `metodoDeCompra`. */
+  paymentMethod?: string;
 }
 
 /**
@@ -141,6 +144,8 @@ export async function comprarEnComercio(
 
   const motivo = motivoParaNoComprar(lineas);
   if (motivo) throw new CompraError(motivo);
+  const pago = metodoDeCompra(dto.paymentMethod);
+  if (pago.motivo) throw new CompraError(pago.motivo);
 
   const referencial = sumaReferencial(lineas);
   const presupuesto = presupuestoSugerido(lineas);
@@ -180,6 +185,7 @@ export async function comprarEnComercio(
     ...(entrega ? { dropoffLat: entrega.lat, dropoffLng: entrega.lng } : {}),
     purchaseBudget: presupuesto,
     ...(dto.notes?.trim() ? { notes: dto.notes.trim() } : {}),
+    ...(pago.metodo ? { paymentMethod: pago.metodo } : {}),
   });
 
   return {

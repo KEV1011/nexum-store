@@ -175,6 +175,10 @@ void main() {
     test('malformada devuelve null', () {
       expect(ofertaDePedido(const {}), isNull);
     });
+
+    test('la oferta dice que es un pedido, no un pasajero', () {
+      expect(ofertaDePedido(crudo())!.servicioEtiqueta, 'Pedido');
+    });
   });
 
   group('oferta de mandado', () {
@@ -221,6 +225,16 @@ void main() {
       final o = ofertaDeMandado(crudo())!;
       expect(o.destination.latitude, MapConstants.pamplonaCenterLat);
       expect(o.destination.longitude, MapConstants.pamplonaCenterLng);
+    });
+
+    test('con qué le pagan llega a la oferta, y sin método no se inventa', () {
+      final conPago = crudo()..['paymentNote'] = 'Te paga por Nequi';
+      expect(ofertaDeMandado(conPago)!.avisoDePago, 'Te paga por Nequi');
+      expect(ofertaDeMandado(crudo())!.avisoDePago, isNull);
+    });
+
+    test('la oferta dice que es un mandado, no un pasajero', () {
+      expect(ofertaDeMandado(crudo())!.servicioEtiqueta, 'Mandado');
     });
 
     test('sin presupuesto de compra queda vacío, no en cero', () {

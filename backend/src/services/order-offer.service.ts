@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { metodoPorValor } from '../lib/metodos-pago';
+import { anclaDeCompra, localLejosDeLaEntrega } from '../lib/ubicacion-comercio';
+import { coordsOf, plazaDeCoordenadas } from './municipality.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Información de oferta de PEDIDOS para el motor de matching.
@@ -52,7 +54,7 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
   const o = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
-      business: { select: { name: true, address: true, lat: true, lng: true } },
+      business: { select: { id: true, name: true, address: true, lat: true, lng: true, citySlug: true } },
       lines: { select: { quantity: true } },
     },
   });
@@ -69,8 +71,36 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
   // sigue en la taquilla, no en el comercio de la otra ciudad.
   const enDestino = (o.status === 'AT_DESTINATION_HUB' || o.hubAt != null)
     && o.hubLat != null && o.hubLng != null;
-  const businessLat = enDestino ? o.hubLat! : (o.business.lat ?? PAMPLONA.lat);
-  const businessLng = enDestino ? o.hubLng! : (o.business.lng ?? PAMPLONA.lng);
+  // Fuera de la última milla, el punto del local se usa SOLO si es de fiar:
+  // la MISMA regla que la compra en un local sin registrar (`anclaDeCompra`).
+  // Un local geocodificado sin ciudad puede haber quedado guardado a cientos
+  // de kilómetros, y entonces el despacho buscaba repartidores alrededor de
+  // ese punto y no le salía a nadie aunque el repartidor estuviera en la
+  // puerta. La referencia es la entrega del cliente —el único punto que pone
+  // alguien que de verdad está ahí—; sin ella, el centro de la ciudad del
+  // local, y solo al final el de Pamplona.
+  let ancla: { lat: number; lng: number };
+  if (enDestino) {
+    ancla = { lat: o.hubLat!, lng: o.hubLng! };
+  } else {
+    const plaza = o.business.citySlug ? await coordsOf(o.business.citySlug) : null;
+    let local = o.business.lat != null && o.business.lng != null
+      ? { lat: o.business.lat, lng: o.business.lng }
+      : null;
+    if (local && !o.business.citySlug && !(await plazaDeCoordenadas(local.lat, local.lng))) local = null;
+    const entrega = o.deliveryLat != null && o.deliveryLng != null
+      ? { lat: o.deliveryLat, lng: o.deliveryLng }
+      : null;
+    ancla = anclaDeCompra(local, plaza, entrega, PAMPLONA);
+    if (localLejosDeLaEntrega(local, entrega)) {
+      console.warn(
+        `[Pedido] «${o.business.name}» (${o.business.id}) tiene su punto lejos de la entrega: ` +
+          `no se usa para buscar repartidor. Hay que fijar su ubicación en el mapa.`,
+      );
+    }
+  }
+  const businessLat = ancla.lat;
+  const businessLng = ancla.lng;
   return {
     status: o.status,
     mode: o.mode,

@@ -27,6 +27,10 @@ import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
 import 'package:nexum_client/features/cart/data/compra_api.dart';
 import 'package:nexum_client/features/cart/presentation/providers/cart_provider.dart';
+import 'package:nexum_client/features/payments/presentation/providers/'
+    'payment_method_provider.dart';
+import 'package:nexum_client/features/payments/presentation/widgets/'
+    'opcion_metodo_pago.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
 
 class CompraComercioScreen extends ConsumerStatefulWidget {
@@ -88,6 +92,7 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
         lat: _lat,
         lng: _lng,
         notas: _notas.text,
+        metodoPago: _metodoDeCompra(ref.read(metodoPagoEfectivoProvider)).valorApi,
       );
       if (!mounted) return;
       ref.read(cartProvider.notifier).clear();
@@ -120,6 +125,13 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
       AppSnackbar.showError(context, e.motivo);
     }
   }
+
+  /// La compra la paga el repartidor en el mostrador y el cliente se la
+  /// devuelve al recibirla, así que el pago EN LÍNEA no sirve: cobra un monto
+  /// fijo al pedir y el total sale del recibo. Si quedó elegido de un viaje
+  /// anterior, aquí se cae a efectivo (el servidor lo rechazaría).
+  static MetodoPago _metodoDeCompra(MetodoPago m) =>
+      m.exigePasarela ? MetodoPago.efectivo : m;
 
   @override
   Widget build(BuildContext context) {
@@ -262,6 +274,41 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
               hintText: 'Ej: si no hay pollo, traer costilla',
             ),
           ),
+
+          const SizedBox(height: AppConstants.spacingL),
+          Text(
+            '¿Cómo le pagas?',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: context.textPrimaryColor,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Al repartidor, cuando te entregue: la compra más el domicilio.',
+            style: TextStyle(
+              fontFamily: 'Inter',
+              fontSize: 12.5,
+              height: 1.35,
+              color: context.textSecondaryColor,
+            ),
+          ),
+          const SizedBox(height: AppConstants.spacingS),
+          // La misma lista y la misma opción del checkout, sin el pago en
+          // línea (ver `_metodoDeCompra`).
+          for (final metodo in ref.watch(metodosDePagoProvider))
+            if (!metodo.exigePasarela)
+              OpcionMetodoPago(
+                metodo: metodo,
+                selected:
+                    _metodoDeCompra(ref.watch(metodoPagoEfectivoProvider)) == metodo,
+                onTap: () {
+                  // ignore: discarded_futures — se recuerda en segundo plano.
+                  ref.read(metodoPagoProvider.notifier).elegir(metodo);
+                },
+              ),
           const SizedBox(height: AppConstants.spacingXL),
         ],
       ),

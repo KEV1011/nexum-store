@@ -1531,6 +1531,9 @@ model Errand {
   dropoffLng       Float?
   serviceFee       Float          @default(6000)
   purchaseBudget   Float?
+  /// Con qué le paga el cliente al repartidor al entregar (catálogo de `lib/metodos-pago.ts`).
+  /// Nunca `en_linea`: el total de una compra sale del recibo y no se conoce al pedir.
+  paymentMethod    String?
   actualCost       Float?
   /// Minutos que PROMETIÓ el repartidor, escritos por él.
   ///

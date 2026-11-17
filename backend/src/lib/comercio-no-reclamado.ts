@@ -27,6 +27,8 @@
 //     poder quedarse con el portal cuando diga que sí. Sin esa puerta esto no
 //     es una estrategia comercial, es un problema.
 
+import { saneaMetodoPago } from './metodos-pago';
+
 /** Lo mínimo que hace falta saber del comercio para decidir cómo se pide. */
 export interface ComercioParaPedir {
   name: string;
@@ -171,4 +173,31 @@ export function motivoParaNoComprar(lineas: LineaDeCompra[]): string | null {
       + `de $${miles(PRESUPUESTO_MAXIMO_COP)} para un mandado.`;
   }
   return null;
+}
+
+/**
+ * Con qué le paga el cliente al repartidor que le hace la compra.
+ *
+ * El repartidor paga en el mostrador con su plata y el cliente se la devuelve
+ * al recibir, junto con el domicilio. Por eso:
+ *  · el pago EN LÍNEA no sirve: cobra un monto fijo al pedir, y el total de
+ *    una compra sale del recibo — se sabe al llegar, no antes. Se rechaza
+ *    diciendo qué elegir, en vez de guardarlo y dejar al repartidor sin cobrar;
+ *  · sin método (una app anterior a esta pantalla) se guarda vacío y la oferta
+ *    no afirma nada, en vez de inventar «efectivo»;
+ *  · un valor que no está en el catálogo se trata igual que ninguno.
+ */
+export function metodoDeCompra(
+  v: unknown,
+): { metodo: string | null; motivo?: undefined } | { metodo?: undefined; motivo: string } {
+  if (typeof v !== 'string' || v.trim() === '') return { metodo: null };
+  const m = saneaMetodoPago(v);
+  if (m === null) return { metodo: null };
+  if (m === 'en_linea') {
+    return {
+      motivo: 'Esta compra se le paga al repartidor al entregarla, porque el total '
+        + 'sale del recibo del local. Elige efectivo o una transferencia.',
+    };
+  }
+  return { metodo: m };
 }

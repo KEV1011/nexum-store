@@ -4,6 +4,7 @@ import {
   atiendeDirecto,
   PRESUPUESTO_MAXIMO_COP,
   listaDeCompra,
+  metodoDeCompra,
   motivoParaNoComprar,
   motivoParaNoPedirDirecto,
   presupuestoSugerido,
@@ -150,5 +151,27 @@ describe('la lista que lee el repartidor en el mostrador', () => {
 
   it('los pesos van con punto de miles, como en todo el resto', () => {
     expect(texto).toContain('$50.000');
+  });
+});
+
+describe('con qué se paga la compra', () => {
+  it('efectivo y transferencias se guardan tal cual (saneados)', () => {
+    expect(metodoDeCompra('efectivo')).toEqual({ metodo: 'efectivo' });
+    expect(metodoDeCompra(' NEQUI ')).toEqual({ metodo: 'nequi' });
+    expect(metodoDeCompra('bre_b')).toEqual({ metodo: 'bre_b' });
+  });
+
+  it('el pago en línea se rechaza diciendo qué elegir: el total sale del recibo', () => {
+    const r = metodoDeCompra('en_linea');
+    expect(r.metodo).toBeUndefined();
+    expect(r.motivo).toMatch(/recibo/);
+    expect(r.motivo).toMatch(/efectivo/);
+  });
+
+  it('sin método o con uno inventado no se afirma nada', () => {
+    expect(metodoDeCompra(undefined)).toEqual({ metodo: null });
+    expect(metodoDeCompra('')).toEqual({ metodo: null });
+    expect(metodoDeCompra('bitcoin')).toEqual({ metodo: null });
+    expect(metodoDeCompra(42)).toEqual({ metodo: null });
   });
 });

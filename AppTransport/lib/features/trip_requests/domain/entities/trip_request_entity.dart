@@ -148,13 +148,20 @@ class TripRequestEntity {
   bool get isDelivery => isEnvios || isOrder || isErrand;
 
   /// Nombre del servicio ofrecido, para que el conductor sepa QUÉ está
-  /// aceptando. Null cuando la solicitud no lo trae (mandado o pedido, que ya
-  /// se anuncian por su cuenta, o una oferta de un backend anterior).
+  /// aceptando. Null cuando un viaje no lo trae (una oferta de un backend
+  /// anterior), y entonces se cae al modo del conductor.
   ///
   /// Importa desde que el pasajero elige categoría: un taxi y un particular se
   /// cobran con tarifas distintas —la del taxi la fija el decreto municipal—,
   /// así que "viaje" a secas ya no dice lo suficiente.
-  String? get servicioEtiqueta => switch (serviceType) {
+  ///
+  /// Un pedido y un mandado se nombran por lo que son: sin esto caían al MODO
+  /// del conductor y la oferta de una compra en un local decía «Pasajero».
+  String? get servicioEtiqueta => isOrder
+      ? 'Pedido'
+      : isErrand
+          ? 'Mandado'
+          : switch (serviceType) {
         'TAXI' => 'Taxi',
         'PARTICULAR' => 'Particular',
         'MOTO' => 'Moto',
