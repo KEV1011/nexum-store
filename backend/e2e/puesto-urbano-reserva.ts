@@ -11,7 +11,11 @@
  * las pruebas del servicio pasaban en verde con él dentro.
  *
  *   1. Un pasajero publica su viaje por puestos y otro reserva → 201.
- *   2. Contraprueba: una salida INTERMUNICIPAL sigue cerrada → 422 con el aviso.
+ *   2. Lleno (4 de 4) y sin taxista: sigue en el tablero del conductor y lo
+ *      puede tomar. Antes del arreglo nadie podía sumarse, así que un viaje
+ *      nunca se llenaba; al poder sumarse, el último puesto lo pasaba a FULL y
+ *      desaparecía justo del tablero donde el taxista lo tenía que ver.
+ *   3. Contraprueba: una salida INTERMUNICIPAL sigue cerrada → 422 con el aviso.
  *
  *   DATABASE_URL=postgresql://... npx tsx e2e/puesto-urbano-reserva.ts
  */
@@ -104,6 +108,7 @@ async function main() {
   const servidor = await arrancarServidor();
   const usuarios: string[] = [];
   const viajes: string[] = [];
+  const conductores: string[] = [];
   try {
     await prisma.municipality.upsert({
       where: { slug: 'pamplona' },
@@ -139,7 +144,7 @@ async function main() {
 
     const reserva = await pedir('POST', `/client/intercity/pool/${urbano?.id}/book`, {
       token: tokenB,
-      body: { seatsBooked: 1, pickupAddress: 'Parque principal' },
+      body: { seatsBooked: 3, pickupAddress: 'Parque principal' },
     });
     check(reserva.status === 201, 'la reserva del puesto URBANO entra (201)', reserva);
     check(
@@ -148,7 +153,29 @@ async function main() {
       reserva.json.error,
     );
 
-    console.log('\n[2] Contraprueba: una salida INTERMUNICIPAL sigue cerrada');
+    console.log('\n[2] Lleno y sin taxista: sigue en el tablero y se puede tomar');
+    const lleno = await prisma.pooledTrip.findUnique({ where: { id: urbano!.id! } });
+    check(lleno?.status === 'FULL', 'con los 4 puestos ocupados queda lleno', lleno?.status);
+    const { listarPuestosSinConductor, tomarPuestoDePasajero } =
+      await import('../src/services/intercity-pool.service');
+    const tablero = await listarPuestosSinConductor('pamplona');
+    check(tablero.some((t) => t.id === urbano!.id), 'el taxista lo ve en su tablero', tablero.map((t) => t.id));
+    const taxista = await prisma.driver.create({
+      data: {
+        name: 'Taxista E2E', phone: `+57302${sufijo}9`, documentType: 'CC',
+        documentNumber: `77${sufijo}`, isVerified: true, status: 'ONLINE',
+        vehicles: { create: { type: 'TAXI', brand: 'Hyundai', model: 'Atos', color: 'Amarillo', plate: `T${sufijo}`, year: 2020, isActive: true } },
+      },
+    });
+    conductores.push(taxista.id);
+    let tomado = false;
+    try {
+      const t = await tomarPuestoDePasajero(taxista.id, urbano!.id!);
+      tomado = !t.sinConductor;
+    } catch (e) { check(false, 'tomar no lanza', (e as Error).message); }
+    check(tomado, 'y lo puede tomar');
+
+    console.log('\n[3] Contraprueba: una salida INTERMUNICIPAL sigue cerrada');
     const inter = await prisma.pooledTrip.create({
       data: {
         tripRef: `E2E-INT-${sufijo}`, kind: 'INTERCITY',
@@ -175,6 +202,8 @@ async function main() {
     try {
       await prisma.seatBooking.deleteMany({ where: { tripId: { in: viajes } } });
       await prisma.pooledTrip.deleteMany({ where: { id: { in: viajes } } });
+      await prisma.vehicle.deleteMany({ where: { driverId: { in: conductores } } });
+      await prisma.driver.deleteMany({ where: { id: { in: conductores } } });
     } catch (e) { console.error('(no se pudo limpiar del todo)', e); }
     await prisma.$disconnect();
     if (servidor.pid) { try { process.kill(-servidor.pid, 'SIGKILL'); } catch { /* ya murió */ } }
