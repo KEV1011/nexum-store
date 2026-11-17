@@ -48,6 +48,7 @@ class CompraApi {
     double? lat,
     double? lng,
     String? notas,
+    String? metodoPago,
   }) async {
     try {
       final r = await _dio.post<Map<String, dynamic>>(
@@ -58,6 +59,9 @@ class CompraApi {
           if (lat != null) 'dropoffLat': lat,
           if (lng != null) 'dropoffLng': lng,
           if (notas != null && notas.trim().isNotEmpty) 'notes': notas.trim(),
+          // Con qué le paga al repartidor al entregar. Así él sabe antes de
+          // aceptar si tiene que llevar efectivo para pagar en el mostrador.
+          if (metodoPago != null) 'paymentMethod': metodoPago,
         },
       );
       final d = r.data?['data'] as Map<String, dynamic>?;

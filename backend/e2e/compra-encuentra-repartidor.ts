@@ -225,6 +225,43 @@ async function main(): Promise<void> {
     await prisma.user.delete({ where: { id: otroCliente.id } });
   }
 
+  console.log('\n[8] Con qué paga el cliente: llega al repartidor, y en línea no se acepta');
+  {
+    ofertas.length = 0;
+    const { b, p } = await ficha('Paga por Nequi', CERCA_PAMPLONA, 'pamplona');
+    const r = await comprarEnComercio(cliente.id, {
+      businessId: b.id, items: [{ productId: p.id, quantity: 1 }],
+      dropoffAddress: 'Carrera 6 # 8-20', dropoffLat: CERCA_PAMPLONA.lat, dropoffLng: CERCA_PAMPLONA.lng,
+      paymentMethod: 'nequi',
+    });
+    mandados.push(r.errand.id);
+    await matching.startErrandMatchingCycle(r.errand.id, r.ancla.lat, r.ancla.lng);
+    await espera(300);
+    const fila = await prisma.errand.findUniqueOrThrow({ where: { id: r.errand.id } });
+    comprobar('el mandado guarda el método', fila.paymentMethod === 'nequi', fila.paymentMethod);
+    const oferta = ofertas.find((o) => o.msg['type'] === 'errand_request'
+      && (o.msg['errand'] as { id?: string } | undefined)?.id === r.errand.id);
+    const dto = oferta?.msg['errand'] as { paymentNote?: string; cobraElRepartidor?: boolean } | undefined;
+    comprobar('la oferta le dice cómo le pagan', typeof dto?.paymentNote === 'string' && /nequi/i.test(dto.paymentNote), dto);
+    comprobar('y que lo cobra él', dto?.cobraElRepartidor === true, dto);
+
+    let motivo = '';
+    try {
+      await comprarEnComercio(cliente.id, {
+        businessId: b.id, items: [{ productId: p.id, quantity: 1 }],
+        dropoffAddress: 'Carrera 6 # 8-20', paymentMethod: 'en_linea',
+      });
+    } catch (e) { motivo = e instanceof Error ? e.message : String(e); }
+    comprobar('pagar en línea una compra se rechaza diciendo por qué', /recibo/.test(motivo), motivo);
+
+    const sin = await comprarEnComercio(cliente.id, {
+      businessId: b.id, items: [{ productId: p.id, quantity: 1 }], dropoffAddress: 'Carrera 6 # 8-20',
+    });
+    mandados.push(sin.errand.id);
+    const filaSin = await prisma.errand.findUniqueOrThrow({ where: { id: sin.errand.id } });
+    comprobar('una app vieja sin método sigue pidiendo, sin inventar «efectivo»', filaSin.paymentMethod === null);
+  }
+
   for (const id of mandados) matching.cancelSearchRetry(`errand:${id}`);
   await prisma.errand.deleteMany({ where: { id: { in: mandados } } });
   await prisma.product.deleteMany({ where: { businessId: { in: negociosCreados } } });

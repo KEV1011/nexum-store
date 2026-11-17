@@ -2853,7 +2853,19 @@ class _TripRequestModal extends StatelessWidget {
                   ),
                   child: Padding(
                     padding: const EdgeInsets.all(AppConstants.spacingL),
+                    // El contenido se DESPLAZA y los botones quedan fijos
+                    // abajo. Con mapa, mandado con su lista y paradas, la
+                    // oferta mide más que la pantalla de un iPhone, y como
+                    // era una columna sin desplazamiento los botones se
+                    // salían por abajo: el conductor veía la oferta y no
+                    // podía aceptarla.
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Flexible(
+                          child: SingleChildScrollView(
+                            child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -3137,6 +3149,10 @@ class _TripRequestModal extends StatelessWidget {
                             ),
                           ],
                         ),
+                      ],
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: AppConstants.spacingL),
                         Row(
                           children: [
@@ -3151,7 +3167,11 @@ class _TripRequestModal extends StatelessWidget {
                               flex: 2,
                               child: ElevatedButton(
                                 onPressed: onAccept,
-                                child: const Text('Aceptar viaje'),
+                                child: Text(trip.isOrder
+                                    ? 'Aceptar pedido'
+                                    : trip.isErrand
+                                        ? 'Aceptar mandado'
+                                        : 'Aceptar viaje'),
                               ),
                             ),
                           ],
@@ -3230,20 +3250,20 @@ class _FareChip extends StatelessWidget {
         Icon(
           icon,
           size: 18,
-          color: highlight ? AppColors.primary : AppColors.textSecondary,
+          color: highlight ? AppColors.primary : context.textSecondaryColor,
         ),
         const SizedBox(height: 2),
         Text(
           value,
           style: theme.textTheme.bodySmall?.copyWith(
             fontWeight: FontWeight.w700,
-            color: highlight ? AppColors.primary : AppColors.textPrimary,
+            color: highlight ? AppColors.primary : context.textPrimaryColor,
           ),
         ),
         Text(
           label,
           style: theme.textTheme.bodySmall?.copyWith(
-            color: AppColors.textSecondary,
+            color: context.textSecondaryColor,
             fontSize: 10,
           ),
         ),
@@ -3319,7 +3339,10 @@ class _ErrandRequestCard extends StatelessWidget {
             errand.description,
             style: theme.textTheme.bodyMedium?.copyWith(
               height: 1.35,
-              color: AppColors.textPrimary,
+              // Del TEMA y no fijo: la oferta va sobre una tarjeta oscura en
+              // modo oscuro, y con el oscuro fijo la lista de la compra era
+              // texto negro sobre fondo negro.
+              color: context.textPrimaryColor,
             ),
           ),
           if (errand.notes != null) ...[
@@ -3327,14 +3350,14 @@ class _ErrandRequestCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.sticky_note_2_rounded,
-                    size: 14, color: AppColors.textSecondary),
+                Icon(Icons.sticky_note_2_rounded,
+                    size: 14, color: context.textSecondaryColor),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     errand.notes!,
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: context.textSecondaryColor,
                       fontStyle: FontStyle.italic,
                     ),
                   ),

@@ -200,6 +200,11 @@ TripRequestEntity? ofertaDeMandado(Map<String, dynamic> e) {
       etaToPickupMinutes: 3,
       requestedAt: DateTime.now(),
       errand: errand,
+      // Con qué le paga el cliente al entregar («Te paga por Nequi»), igual
+      // que en un pedido. Una compra a un local sin portal la paga el
+      // repartidor en el mostrador y se la devuelven al llegar: saberlo antes
+      // de aceptar decide si necesita llevar efectivo.
+      paymentNote: e['paymentNote'] as String?,
     );
   } catch (_) {
     return null;

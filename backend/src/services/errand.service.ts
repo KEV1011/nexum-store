@@ -21,6 +21,7 @@ import { guardaNoTerminal, esEstadoTerminal } from '../lib/estado-terminal';
 import { maskPhone } from './safe-contact.service';
 import { sendPushToClient, sendPushToDriver } from './push.service';
 import { recordCompletedTrip } from './earnings.service';
+import { metodoPorValor } from '../lib/metodos-pago';
 
 // Inyectado por ws.handler al arrancar (mismo patrón que los demás servicios):
 // avisa al mandadero asignado cuando el cliente cancela su mandado.
@@ -139,6 +140,7 @@ export async function requestClientErrand(
       serviceFee: ERRAND_SERVICE_FEE,
       purchaseBudget: dto.purchaseBudget ?? null,
       notes: dto.notes ?? null,
+      paymentMethod: dto.paymentMethod ?? null,
       status: 'SEARCHING',
       // Cadena de custodia: SOLO PIN de entrega. Se recoge en establecimientos
       // que no están registrados en la plataforma y no podrían dictar un PIN.
@@ -276,6 +278,7 @@ export async function updateErrandStatus(
           completedAt: new Date().toISOString(),
         },
         existing.driverId,
+        existing.paymentMethod,
       );
     }
     void sendPushToClient(existing.userId, {
@@ -517,7 +520,9 @@ export function toErrandRequestDTO(errand: {
   notes: string | null;
   pickupLat?: number | null; pickupLng?: number | null;
   dropoffLat?: number | null; dropoffLng?: number | null;
+  paymentMethod?: string | null;
 }): ErrandRequestDTO {
+  const metodo = metodoPorValor(errand.paymentMethod ?? null);
   return {
     id: errand.id,
     category: (CATEGORY_FROM_PRISMA[errand.category] ?? 'other') as ErrandCategory,
@@ -534,6 +539,14 @@ export function toErrandRequestDTO(errand: {
     ...(errand.pickupLng != null ? { pickupLng: errand.pickupLng } : {}),
     ...(errand.dropoffLat != null ? { dropoffLat: errand.dropoffLat } : {}),
     ...(errand.dropoffLng != null ? { dropoffLng: errand.dropoffLng } : {}),
+    // Con qué le pagan al entregar: el mismo texto que la oferta de un pedido,
+    // redactado desde el catálogo. Sin método no se dice nada.
+    ...(metodo
+      ? {
+          paymentNote: metodo.avisoAlConductor ?? 'Te paga en efectivo',
+          cobraElRepartidor: metodo.quienCobra === 'conductor',
+        }
+      : {}),
   };
 }
 

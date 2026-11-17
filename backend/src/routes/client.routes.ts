@@ -962,6 +962,7 @@ router.post(
     const body = req.body as {
       items?: unknown; dropoffAddress?: unknown;
       dropoffLat?: unknown; dropoffLng?: unknown; notes?: unknown;
+      paymentMethod?: unknown;
     };
     try {
       const r = await comprarEnComercio(req.clientId!, {
@@ -971,6 +972,7 @@ router.post(
         ...(typeof body.dropoffLat === 'number' ? { dropoffLat: body.dropoffLat } : {}),
         ...(typeof body.dropoffLng === 'number' ? { dropoffLng: body.dropoffLng } : {}),
         ...(typeof body.notes === 'string' ? { notes: body.notes } : {}),
+        ...(typeof body.paymentMethod === 'string' ? { paymentMethod: body.paymentMethod } : {}),
       });
       res.status(201).json({
         success: true,

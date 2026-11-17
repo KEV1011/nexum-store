@@ -1196,6 +1196,8 @@ export interface RequestClientErrandDTO {
   dropoffLng?: number;
   purchaseBudget?: number;
   notes?: string;
+  /** Con qué le paga al repartidor al entregar (ya saneado contra el catálogo). */
+  paymentMethod?: string;
 }
 
 export interface ClientErrandDTO extends DriverCardFields {
@@ -1267,6 +1269,13 @@ export interface ErrandRequestDTO {
   /** A dónde se entrega, cuando el cliente eligió el punto. */
   dropoffLat?: number;
   dropoffLng?: number;
+  /**
+   * Cómo le van a pagar al entregar («Te paga por Nequi»). Mismo texto y misma
+   * fuente que en el pedido. Ausente en los mandados sin método declarado: la
+   * app no afirma nada en vez de inventar «efectivo».
+   */
+  paymentNote?: string;
+  cobraElRepartidor?: boolean;
 }
 
 // ─── Intercity Bookings ───────────────────────────────────────────────────────
