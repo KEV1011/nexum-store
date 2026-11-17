@@ -80,4 +80,53 @@ void main() {
     final s = ServicioAbierto.fromJson(viaje()..remove('puedeSoltar'))!;
     expect(s.puedeSoltar, isFalse);
   });
+
+  // ── Varios pedidos a la vez ───────────────────────────────────────────────
+  Map<String, dynamic> pedido(String id, {String local = 'La Casona'}) => {
+        'tipo': 'order',
+        'id': id,
+        'ref': 'NX-$id',
+        'estado': 'DRIVER_TO_PICKUP',
+        'fase': 'recogida',
+        'puedeSoltar': true,
+        'oferta': {
+          'id': id,
+          'businessName': local,
+          'businessAddress': 'Calle 5 #4-20',
+          'businessLat': 7.3754,
+          'businessLng': -72.6486,
+          'deliveryAddress': 'Pje. la Curia #6',
+          'deliveryLat': 7.379,
+          'deliveryLng': -72.651,
+          'deliveryFee': 2500,
+          'itemsCount': 2,
+        },
+      };
+
+  test('los OTROS: todos menos el que está en pantalla', () {
+    final todos = [pedido('p1'), pedido('p2'), viaje()]
+        .map(ServicioAbierto.fromJson)
+        .whereType<ServicioAbierto>()
+        .toList();
+    final enPantalla = todos.first.solicitud!;
+    final otros = otrosServicios(todos, enPantalla);
+    expect(otros.map((s) => s.id), ['p2', 'trip-1']);
+    // Sin nada en pantalla, son todos.
+    expect(otrosServicios(todos, null), hasLength(3));
+  });
+
+  test('el pedido se reconoce por su orderId, no por otro campo', () {
+    final s = ServicioAbierto.fromJson(pedido('p9'))!;
+    expect(idEnServidor(s.solicitud!), 'p9');
+  });
+
+  test('otro pedido mientras lleva un pedido se APILA; tras un viaje, queda en cola', () {
+    final p1 = ServicioAbierto.fromJson(pedido('p1'))!.solicitud!;
+    final p2 = ServicioAbierto.fromJson(pedido('p2'))!.solicitud!;
+    final v = ServicioAbierto.fromJson(viaje())!.solicitud!;
+    expect(esPedidoApilado(p2, p1), isTrue);
+    expect(esPedidoApilado(p2, v), isFalse);
+    expect(esPedidoApilado(v, p1), isFalse);
+    expect(esPedidoApilado(p2, null), isFalse);
+  });
 }

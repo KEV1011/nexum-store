@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:nexum_driver/core/utils/rumbo_vehiculo.dart';
 import 'package:nexum_driver/app/theme/adaptive_colors.dart';
 import 'package:nexum_driver/app/theme/app_colors.dart';
+import 'package:nexum_driver/app/theme/contraste.dart';
 import 'package:nexum_driver/core/constants/app_constants.dart';
 import 'package:nexum_driver/core/constants/map_constants.dart';
 import 'package:nexum_driver/core/domain/service_type.dart';
@@ -23,6 +24,8 @@ import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request
 import 'package:nexum_driver/features/active_trip/presentation/providers/active_trip_provider.dart';
 import 'package:nexum_driver/features/active_trip/presentation/providers/siguiente_viaje_provider.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/siguiente_viaje_card.dart';
+import 'package:nexum_driver/features/active_trip/presentation/widgets/pedidos_en_curso_sheet.dart';
+import 'package:nexum_driver/shared/services/servicios_abiertos.dart';
 import 'package:nexum_driver/shared/models/oferta_mapper.dart';
 import 'package:nexum_driver/shared/services/navegacion_externa.dart';
 import 'package:nexum_driver/features/active_trip/presentation/widgets/delivery_proof_sheet.dart';
@@ -119,6 +122,12 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   // llegando al destino. Se enseña en una franja arriba, no a pantalla completa:
   // quien la mira va conduciendo con un pasajero dentro.
   TripRequestEntity? _ofertaSiguiente;
+
+  /// Los OTROS pedidos que lleva a la vez (pedidos apilados), según el servidor.
+  List<ServicioAbierto> _otros = const [];
+
+  /// El id con que esta pantalla etiquetó el GPS (ver `dispose`).
+  String? _miIdWs;
   int _segundosOferta = 0;
   Timer? _cuentaOferta;
   StreamSubscription<Map<String, dynamic>>? _encTripSub;
@@ -138,6 +147,8 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         // Etiqueta el GPS del conductor con este viaje para que el backend lo
         // reenvíe al mapa del pasajero (driver_location).
         DriverWsService().activeTripId = trip.request.id;
+        _miIdWs = trip.request.id;
+        if (trip.request.isOrder) unawaited(_refrescarOtros());
         if (trip.isToPickup && !trip.request.isOrder && !trip.request.isErrand) {
           // El pasajero ve "Conductor en camino" (ARRIVING) desde que arranca
           // la navegación al pickup; antes se saltaba directo a ARRIVED.
@@ -238,12 +249,18 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   ) {
     if (!mounted) return;
     if (crudo[kEsEncadenado] != true) return;
-    // Ya hay una oferta en pantalla, o ya aceptó una para después.
+    // Ya hay una oferta en pantalla.
     if (_ofertaSiguiente != null) return;
-    if (ref.read(siguienteViajeProvider) != null) return;
 
     final oferta = mapear(crudo);
     if (oferta == null) return;
+    // Ya aceptó un viaje para después: uno en cola, no una pila. Salvo otro
+    // PEDIDO mientras lleva un pedido, que no se encola: se lleva a la vez
+    // (el servidor ya limita cuántos y a qué distancia del local).
+    if (!esPedidoApilado(oferta, ref.read(activeTripProvider)?.request) &&
+        ref.read(siguienteViajeProvider) != null) {
+      return;
+    }
 
     // Un toque corto, no la alarma en bucle de la oferta normal: está
     // conduciendo y con un pasajero al lado.
@@ -291,6 +308,16 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       AppSnackbar.showError(context, motivo);
       return;
     }
+    // Otro pedido mientras lleva un pedido: queda en «Pedidos en curso» y lo
+    // atiende cuando quiera —puede estar en este mismo local—.
+    if (esPedidoApilado(oferta, ref.read(activeTripProvider)?.request)) {
+      AppSnackbar.showSuccess(
+        context,
+        'Aceptado. Lo tienes en «Pedidos en curso».',
+      );
+      unawaited(_refrescarOtros());
+      return;
+    }
     // NO se entra en él: todavía lleva un pasajero dentro. Queda en la cola y
     // la pantalla de resumen, al cerrar el viaje actual, ofrece ir directo.
     ref.read(siguienteViajeProvider.notifier).encolar(oferta);
@@ -315,9 +342,40 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     setState(() => _ofertaSiguiente = null);
   }
 
+  /// Los otros pedidos que lleva (según el servidor), para cambiar de uno a otro.
+  Future<void> _refrescarOtros() async {
+    try {
+      final todos = await listarServiciosAbiertos();
+      if (!mounted) return;
+      setState(() => _otros = otrosServicios(todos, ref.read(activeTripProvider)?.request));
+    } catch (_) {
+      // Sin red: se queda lo que había. El servidor sigue sabiendo qué lleva.
+    }
+  }
+
+  /// Pasa a atender otro de los pedidos que lleva.
+  ///
+  /// El `await` antes de navegar es obligatorio: `/active-trip` redirige al
+  /// inicio si el viaje activo está vacío al construirse.
+  Future<void> _abrirPedidosEnCurso() async {
+    await _refrescarOtros();
+    if (!mounted || _otros.isEmpty) return;
+    final elegido = await mostrarPedidosEnCurso(context, _otros);
+    final solicitud = elegido?.solicitud;
+    if (elegido == null || solicitud == null || !mounted) return;
+    await ref.read(activeTripProvider.notifier).retomar(solicitud, elegido.fase);
+    if (!mounted) return;
+    context.pushReplacement('/active-trip');
+  }
+
   @override
   void dispose() {
-    DriverWsService().activeTripId = null;
+    // Solo si sigue siendo el suyo: al cambiar de pedido, la pantalla nueva ya
+    // puso su id antes de que esta se cierre, y borrarlo dejaría el GPS sin
+    // etiqueta en pleno servicio.
+    if (DriverWsService().activeTripId == _miIdWs) {
+      DriverWsService().activeTripId = null;
+    }
     _orderCancelSub?.cancel();
     _custodyPinSub?.cancel();
     _chatSub?.cancel();
@@ -722,6 +780,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
             _buildMap(trip, serviceType),
             _buildTopBar(trip, serviceType),
             _buildNavegarPill(trip, serviceType),
+            if (_otros.isNotEmpty) _buildPedidosEnCursoPill(),
             if (!_origenRealDeRuta) const _BuscandoSenalGps(),
             if (_ofertaSiguiente != null)
               SiguienteViajeCard(
@@ -944,6 +1003,42 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
       lat: punto.latLng.latitude,
       lng: punto.latLng.longitude,
       etiqueta: punto.address,
+    );
+  }
+
+  /// «Pedidos en curso (N)»: debajo de la de navegar, en la misma franja libre.
+  Widget _buildPedidosEnCursoPill() {
+    final n = _otros.length;
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 112,
+      left: AppConstants.spacingM,
+      child: Material(
+        color: AppColors.primary,
+        borderRadius: BorderRadius.circular(24),
+        elevation: 4,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: _abrirPedidosEnCurso,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.shopping_bag_rounded, size: 18, color: textoSobreMarca),
+                const SizedBox(width: 6),
+                Text(
+                  n == 1 ? '1 pedido más' : '$n pedidos más',
+                  style: const TextStyle(
+                    color: textoSobreMarca,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

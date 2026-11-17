@@ -436,7 +436,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // Subscribe to incoming business-order delivery offers.
     _wsOrderSub = DriverWsService().orderRequests.listen((orderMap) {
-      if (!mounted || orderMap[kEsEncadenado] == true) return;
+      if (!mounted) return;
+      // Un pedido apilado (lleva otro pedido) llega marcado igual que un
+      // encadenado. Si la pantalla del viaje está delante, es suya; si no
+      // —está aquí, en el inicio— es una oferta como cualquier otra: perderla
+      // dejaría el pedido esperando a que otro repartidor la vea.
+      if (orderMap[kEsEncadenado] == true && ref.read(activeTripProvider) != null) return;
       final request = ofertaDePedido(orderMap);
       if (request != null) _onTripRequest(request);
     });
@@ -1416,10 +1421,11 @@ class _ServicePrefsSheet extends ConsumerWidget {
               value: prefs.chained,
               onChanged: (v) => showIfError(
                   ref.read(servicePrefsProvider.notifier).set(chained: v)),
-              title: const Text('Enlazar viajes',
+              title: const Text('Enlazar servicios',
                   style: TextStyle(color: _text, fontSize: 14.5)),
               subtitle: const Text(
-                  'Recibe el siguiente servicio al ir llegando a tu destino',
+                  'El siguiente servicio al ir llegando a tu destino, y otro '
+                  'pedido cercano mientras llevas uno',
                   style: TextStyle(color: _sub, fontSize: 11.5)),
               secondary:
                   const Icon(Icons.bolt_rounded, color: _sub, size: 22),

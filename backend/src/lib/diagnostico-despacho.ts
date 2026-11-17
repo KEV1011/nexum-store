@@ -32,14 +32,23 @@ export function motivoDeDiagnostico(c: {
   fresh: boolean;
   dist: number | null;
   inRadius: boolean;
+  /**
+   * Lleva pedidos y puede llevarse este también (ver `_sqlPedidoApilado` del
+   * despacho): ocupado, pero despachable para un pedido cercano.
+   */
+  apilable?: boolean;
 }): string | null {
   if (c.status === 'OFFLINE') return 'Desconectado';
-  if (c.status === 'ON_TRIP') {
-    return c.enViajeVacio
-      ? 'Marcado «en viaje» sin ningún servicio abierto (se corrige solo con su próximo latido de GPS)'
+  if (c.status === 'ON_TRIP' && !(c.tipo === 'order' && c.apilable)) {
+    if (c.enViajeVacio) {
+      return 'Marcado «en viaje» sin ningún servicio abierto (se corrige solo con su próximo latido de GPS)';
+    }
+    return c.tipo === 'order'
+      ? 'En un servicio: solo recibe otro pedido si lleva solo pedidos, menos del máximo, '
+        + 'tiene «Enlazar servicios» activado y está cerca del local'
       : 'En un servicio (solo recibe encadenados al terminar)';
   }
-  if (c.status !== 'ONLINE') return `Estado ${c.status}`;
+  if (c.status !== 'ONLINE' && c.status !== 'ON_TRIP') return `Estado ${c.status}`;
   if (!c.isVerified) return 'No verificado';
   if (c.bloqueado) return 'Documentos vencidos';
   if (!c.acceptsKind) return `Tiene apagado «${NOMBRE_TIPO[c.tipo]}» en sus preferencias`;
