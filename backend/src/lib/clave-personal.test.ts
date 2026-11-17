@@ -40,8 +40,12 @@ describe('qué clave se acepta', () => {
 describe('se guarda con hash, no en claro', () => {
   it('el hash no contiene la clave y la comprueba', () => {
     const h = hashClave('4827');
-    expect(h).not.toContain('4827');
-    expect(h.startsWith('scrypt$')).toBe(true);
+    // La forma exacta: algoritmo, sal y hash en hexadecimal, sin ningún campo
+    // donde pueda ir la clave en claro. Antes se comprobaba con
+    // `not.toContain('4827')`, y eso fallaba al azar: el hash es hexadecimal
+    // aleatorio y una de cada ~700 veces trae «4827» dentro por casualidad.
+    expect(h).toMatch(/^scrypt\$[0-9a-f]{32}\$[0-9a-f]{64}$/);
+    expect(h.split('$')).not.toContain('4827');
     expect(claveCoincide(h, '4827')).toBe(true);
     expect(claveCoincide(h, ' 4827')).toBe(true);
     expect(claveCoincide(h, '4828')).toBe(false);
