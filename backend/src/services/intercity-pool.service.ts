@@ -1391,6 +1391,16 @@ async function _conPosicionDelBus(
   return dto;
 }
 
+/**
+ * El tipo de una salida (`URBANO` | `INTERCITY`), o null si no existe. Lo usa
+ * la ruta de reserva para cortar solo el intermunicipal aplazado: el puesto
+ * urbano se reserva por la misma ruta.
+ */
+export async function tipoDeSalida(tripId: string): Promise<string | null> {
+  const t = await prisma.pooledTrip.findUnique({ where: { id: tripId }, select: { kind: true } });
+  return t?.kind ?? null;
+}
+
 export async function getPooledTripById(tripId: string, includeBookings = false): Promise<PooledTripDTO | null> {
   const t = await prisma.pooledTrip.findUnique({
     where: { id: tripId },

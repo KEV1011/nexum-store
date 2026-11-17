@@ -3,7 +3,10 @@ import {
   INTERMUNICIPAL_APLAZADO,
   intermunicipalAbierto,
   motivoParaNoPedirIntermunicipal,
+  motivoParaNoReservarPuesto,
 } from './intermunicipal-abierto';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const previo = process.env['INTERMUNICIPAL_ABIERTO'];
 afterEach(() => {
@@ -50,5 +53,34 @@ describe('motivoParaNoPedirIntermunicipal', () => {
     expect(INTERMUNICIPAL_APLAZADO).toMatch(/habilitando/i);
     expect(INTERMUNICIPAL_APLAZADO).toMatch(/dentro de tu ciudad/i);
     expect(INTERMUNICIPAL_APLAZADO).not.toMatch(/\b(enero|febrero|semana|mes que viene)\b/i);
+  });
+});
+
+describe('motivoParaNoReservarPuesto', () => {
+  it('el puesto URBANO se reserva aunque el intermunicipal esté aplazado', () => {
+    // Era el fallo: el viaje por puestos dentro de la ciudad respondía «el
+    // servicio intermunicipal abre pronto» porque comparte ruta de reserva.
+    delete process.env['INTERMUNICIPAL_ABIERTO'];
+    expect(motivoParaNoReservarPuesto('URBANO')).toBeNull();
+  });
+
+  it('la salida intermunicipal sigue cerrada, y lo desconocido cuenta como ella', () => {
+    delete process.env['INTERMUNICIPAL_ABIERTO'];
+    for (const k of ['INTERCITY', null, undefined, '', 'urbano']) {
+      expect(motivoParaNoReservarPuesto(k), String(k)).toBe(INTERMUNICIPAL_APLAZADO);
+    }
+    process.env['INTERMUNICIPAL_ABIERTO'] = 'true';
+    expect(motivoParaNoReservarPuesto('INTERCITY')).toBeNull();
+  });
+
+  it('la ruta de reserva decide con el TIPO de la salida, no con la ruta', () => {
+    // Si la ruta volviera a llamar al corte general, el urbano se cerraría
+    // otra vez sin que ninguna prueba de la regla lo notara.
+    const rutas = readFileSync(join(__dirname, '..', 'routes', 'client.routes.ts'), 'utf8');
+    const i = rutas.indexOf("router.post('/intercity/pool/:id/book'");
+    expect(i).toBeGreaterThan(-1);
+    const cuerpo = rutas.slice(i, rutas.indexOf('router.', i + 10));
+    expect(cuerpo).toContain('motivoParaNoReservarPuesto(');
+    expect(cuerpo).not.toContain('motivoParaNoPedirIntermunicipal(');
   });
 });

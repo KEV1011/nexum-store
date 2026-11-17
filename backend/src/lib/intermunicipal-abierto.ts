@@ -46,3 +46,22 @@ export const INTERMUNICIPAL_APLAZADO =
 export function motivoParaNoPedirIntermunicipal(): string | null {
   return intermunicipalAbierto() ? null : INTERMUNICIPAL_APLAZADO;
 }
+
+/**
+ * Lo mismo, para RESERVAR un puesto en una salida ya publicada.
+ *
+ * El puesto de taxi urbano vive en la misma tabla que la salida intermunicipal
+ * (`PooledTrip`, distinguidos por `kind`) y la app lo reserva por la MISMA
+ * ruta (`/client/intercity/pool/:id/book`). Cortar esa ruta entera cerraba
+ * también el viaje por puestos dentro de la ciudad, que es justo lo que sigue
+ * abierto: el pasajero veía «el servicio intermunicipal abre pronto» al
+ * reservar un puesto de la universidad al centro.
+ *
+ * Solo se corta lo que es intermunicipal. Un `kind` desconocido o ausente se
+ * trata como intermunicipal: es el valor por defecto de la columna y abrir de
+ * más es el error que este corte existe para evitar.
+ */
+export function motivoParaNoReservarPuesto(kind: string | null | undefined): string | null {
+  if (kind === 'URBANO') return null;
+  return motivoParaNoPedirIntermunicipal();
+}
