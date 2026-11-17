@@ -11,10 +11,13 @@
 /// escondido bajo dos selectores de municipio.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:go_router/go_router.dart';
 
 import 'package:nexum_client/app/theme/app_colors.dart';
 import 'package:nexum_client/app/theme/adaptive_colors.dart';
@@ -24,7 +27,11 @@ import 'package:nexum_client/core/utils/safe_back.dart';
 import 'package:nexum_client/features/intercity/presentation/widgets/city_search_sheet.dart';
 import 'package:nexum_client/features/pooled/domain/entities/pooled_trip_entity.dart';
 import 'package:nexum_client/features/pooled/presentation/providers/pooled_provider.dart';
+import 'package:nexum_client/features/pooled/presentation/providers/mis_viajes_puesto_provider.dart';
+import 'package:nexum_client/features/pooled/domain/entities/mi_viaje_puesto.dart';
+import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/shared/widgets/address_autocomplete_field.dart';
+import 'package:nexum_client/features/payments/presentation/providers/payment_method_provider.dart';
 import 'package:nexum_client/app/theme/contraste.dart';
 
 const _kUrbano = AppColors.serviceTaxi;
@@ -61,6 +68,8 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
     // siempre, aunque no haya GPS ni cobertura, para que pueda ver su viaje y
     // cancelarlo desde cualquier estado de esta pantalla.
     await ref.read(pooledProvider.notifier).cargarMisPuestos();
+    // Y los viajes en los que VA (publicados o reservados), con su estado.
+    await ref.read(misViajesPuestoProvider.notifier).cargar();
     // Con ciudad elegida no se pide el GPS: pedir un permiso que no se va a
     // usar es la clase de cosa que enseña a decir «no».
     if (_ciudadElegida != null) {
@@ -94,6 +103,7 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pooledProvider);
+    final misViajes = ref.watch(misViajesPuestoProvider).viajes;
 
     return Scaffold(
       backgroundColor: context.backgroundColor,
@@ -195,7 +205,31 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
             // taxista? ¿se sumó alguien? Va arriba del todo y en cualquier
             // estado de la pantalla —era el hueco: tras publicar no había
             // forma de ver qué pasó ni de cancelar—.
-            if (state.misPuestos.isNotEmpty) ...[
+            // Lo nuevo: publicados Y reservados, con su estado, sin
+            // desaparecer al terminar (para poder calificar). Tocar abre el
+            // viaje: mapa, taxista, chat y calificación.
+            if (misViajes != null && misViajes.isNotEmpty) ...[
+              Text(
+                'Tus viajes por puestos',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800,
+                  color: context.textPrimaryColor,
+                ),
+              ),
+              const SizedBox(height: 10),
+              for (final v in misViajes)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _TarjetaMiViaje(
+                    viaje: v,
+                    onAbrir: () => context.push(AppRoutes.puestoViajePath(v.id)),
+                  ),
+                ),
+              Divider(height: 28, color: context.outlineColor),
+            ]
+            // Servidor anterior a la lista nueva: la tarjeta de siempre.
+            else if (misViajes == null && state.misPuestos.isNotEmpty) ...[
               Text(
                 state.misPuestos.length == 1
                     ? 'Tu viaje publicado'
@@ -390,7 +424,94 @@ class _PuestoUrbanoScreenState extends ConsumerState<PuestoUrbanoScreen> {
     if (confirmado == true) {
       HapticFeedback.mediumImpact();
       await _cargar();
+      // Directo a SU viaje: antes, al reservar, el puesto desaparecía de la
+      // vista y no había dónde ver si alguien lo tomaba.
+      if (mounted) unawaited(context.push(AppRoutes.puestoViajePath(trip.id)));
     }
+  }
+}
+
+/// Un viaje por puestos del pasajero en la lista: ruta, estado y hora.
+class _TarjetaMiViaje extends StatelessWidget {
+  const _TarjetaMiViaje({required this.viaje, required this.onAbrir});
+
+  final MiViajePuesto viaje;
+  final VoidCallback onAbrir;
+
+  @override
+  Widget build(BuildContext context) {
+    final v = viaje;
+    final Color color = switch (v.estado) {
+      PooledTripStatus.cancelled => AppColors.error,
+      PooledTripStatus.completed => AppColors.success,
+      _ => v.sinConductor ? AppColors.warning : _kUrbano,
+    };
+    final hora =
+        '${v.salida.hour.toString().padLeft(2, '0')}:${v.salida.minute.toString().padLeft(2, '0')}';
+    return Material(
+      color: context.surfaceColor,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onAbrir,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: color.withValues(alpha: 0.5)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      v.titulo,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: context.textPrimaryColor,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      estadoDeMiViaje(v),
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: color,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${v.soyAutor ? 'Lo publicaste tú' : 'Reservaste ${v.reserva.seatLabel}'}'
+                      ' · sale a las $hora',
+                      style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                    ),
+                    if (v.puedeCalificar)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Toca para calificar al taxista',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: context.textPrimaryColor,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: context.textSecondaryColor),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -666,6 +787,21 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
   bool _enviando = false;
   final _dondeCtrl = TextEditingController();
 
+  /// El punto de recogida en el mapa. OBLIGATORIO: el taxista pasa por cada
+  /// pasajero y sin el punto no sabe a dónde ir ni en qué orden. Antes era un
+  /// texto opcional y llegaban reservas sin ningún sitio donde recoger.
+  double? _lat;
+  double? _lng;
+
+  /// Cómo le va a pagar al taxista. El puesto se paga en la mano, así que el
+  /// pago en línea no se ofrece.
+  late MetodoPago _metodo = () {
+    final m = ref.read(metodoPagoProvider);
+    return m.exigePasarela ? MetodoPago.efectivo : m;
+  }();
+
+  bool get _listo => _dondeCtrl.text.trim().isNotEmpty && _lat != null && _lng != null;
+
   @override
   void dispose() {
     _dondeCtrl.dispose();
@@ -673,11 +809,15 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
   }
 
   Future<void> _confirmar() async {
+    if (!_listo) return;
     setState(() => _enviando = true);
     final error = await ref.read(pooledProvider.notifier).bookSeats(
           tripId: widget.trip.id,
           seats: _puestos,
           pickupAddress: _dondeCtrl.text.trim(),
+          pickupLat: _lat,
+          pickupLng: _lng,
+          metodoPago: _metodo.valorApi,
         );
     if (!mounted) return;
     if (error == null) {
@@ -707,7 +847,13 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
         // + la barra de navegación del teléfono (sin teclado): el botón final
         // quedaba debajo de ella en los Android de borde a borde.
         padding: EdgeInsets.fromLTRB(20, 12, 20, 20 + _margenSistema(context)),
-        child: Column(
+        // Con la recogida, el pago y el teclado abierto la hoja ya no cabe:
+        // se desliza en vez de dejar el botón debajo del borde.
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.9,
+        ),
+        child: SingleChildScrollView(
+         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -777,9 +923,51 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
             // escribir.
             AddressAutocompleteField(
               controller: _dondeCtrl,
-              label: '¿Dónde te recogemos? (opcional)',
-              hint: 'Ej: Calle 6 # 4-20, frente a la panadería',
-              requiredField: false,
+              label: '¿Dónde te recogemos?',
+              hint: 'Busca la dirección o márcala en el mapa',
+              requiredField: true,
+              // El punto se guarda junto con la dirección: es lo que el
+              // taxista navega y lo que ordena las recogidas.
+              onPlaceSelected: (p) => setState(() {
+                _lat = p.lat;
+                _lng = p.lng;
+              }),
+              // Escribir otra cosa suelta el punto viejo: conservarlo
+              // mandaría al taxi a un sitio con el texto de otro.
+              onManualEdit: () => setState(() {
+                _lat = null;
+                _lng = null;
+              }),
+            ),
+            if (!_listo)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'Elige la dirección de la lista o márcala en el mapa: el '
+                  'taxista necesita el punto para recogerte.',
+                  style: TextStyle(fontSize: 12, color: context.textSecondaryColor),
+                ),
+              ),
+            const SizedBox(height: 14),
+
+            Text('¿Cómo le pagas al taxista?',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: context.textSecondaryColor)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final m in MetodoPago.values)
+                  if (!m.exigePasarela)
+                    ChoiceChip(
+                      label: Text(m.etiqueta),
+                      selected: _metodo == m,
+                      onSelected: (_) => setState(() => _metodo = m),
+                    ),
+              ],
             ),
             const SizedBox(height: 16),
 
@@ -809,11 +997,12 @@ class _HojaReservaState extends ConsumerState<_HojaReserva> {
               child: FilledButton(
                 style: FilledButton.styleFrom(foregroundColor: colorDeTextoSobre(_kUrbano),
 backgroundColor: _kUrbano),
-                onPressed: _enviando ? null : _confirmar,
+                onPressed: _enviando || !_listo ? null : _confirmar,
                 child: Text(_enviando ? 'Reservando…' : 'Reservar mi puesto'),
               ),
             ),
           ],
+         ),
         ),
       ),
     );
@@ -914,6 +1103,12 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
   int _puestos = 4;
   int _mios = 1;
 
+  /// Cómo le pagará al taxista quien publica: también viaja y también paga.
+  late MetodoPago _metodo = () {
+    final m = ref.read(metodoPagoProvider);
+    return m.exigePasarela ? MetodoPago.efectivo : m;
+  }();
+
   /// `null` = «lo antes posible».
   ///
   /// Es el estado por defecto a propósito: la mayoría de quien publica un
@@ -1009,6 +1204,7 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
           origenLng: _origenLng,
           destinoLat: _destinoLat,
           destinoLng: _destinoLng,
+          metodoPago: _metodo.valorApi,
         );
     if (!mounted) return;
     if (error == null) {
@@ -1174,6 +1370,26 @@ class _HojaPublicarState extends ConsumerState<_HojaPublicar> {
               ),
               const SizedBox(height: 16),
 
+              Text('¿Cómo le pagas al taxista?',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: context.textSecondaryColor)),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final m in MetodoPago.values)
+                    if (!m.exigePasarela)
+                      ChoiceChip(
+                        label: Text(m.etiqueta),
+                        selected: _metodo == m,
+                        onSelected: (_) => setState(() => _metodo = m),
+                      ),
+                ],
+              ),
+              const SizedBox(height: 14),
               // EL PRECIO NO SE PREGUNTA: lo pone la plataforma. Antes era un
               // campo de texto con un tope, así que dos pasajeros publicaban
               // el mismo trayecto a precios distintos y había que validarlo

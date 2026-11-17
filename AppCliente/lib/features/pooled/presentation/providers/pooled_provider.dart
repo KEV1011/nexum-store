@@ -262,6 +262,9 @@ class PooledNotifier extends StateNotifier<PooledState> {
     double? origenLng,
     double? destinoLat,
     double? destinoLng,
+    /// Cómo le pagará al taxista (`MetodoPago.valorApi`). Quien publica
+    /// también viaja y también paga.
+    String? metodoPago,
   }) async {
     try {
       await _dio.post<Map<String, dynamic>>(
@@ -286,6 +289,7 @@ class PooledNotifier extends StateNotifier<PooledState> {
             'destLat': destinoLat, 'destLng': destinoLng,
           },
           if (notas != null && notas.trim().isNotEmpty) 'notes': notas.trim(),
+          if (metodoPago != null) 'paymentMethod': metodoPago,
         },
       );
       return null;
@@ -354,6 +358,11 @@ class PooledNotifier extends StateNotifier<PooledState> {
     /// Quién viaja en cada silla: uno por puesto. Es la planilla con la que
     /// la empresa responde por quién iba a bordo.
     List<PasajeroTiquete> pasajeros = const [],
+    /// Puesto URBANO: el punto marcado en el mapa (obligatorio ahí) y cómo
+    /// le paga al taxista.
+    double? pickupLat,
+    double? pickupLng,
+    String? metodoPago,
   }) async {
     try {
       await _dio.post<Map<String, dynamic>>(
@@ -372,6 +381,11 @@ class PooledNotifier extends StateNotifier<PooledState> {
           // por un error después de confirmar.
           if (pasajeros.isNotEmpty && pasajeros.every((p) => p.completo))
             'passengers': [for (final p in pasajeros) p.toJson()],
+          if (pickupLat != null && pickupLng != null) ...{
+            'pickupLat': pickupLat,
+            'pickupLng': pickupLng,
+          },
+          if (metodoPago != null) 'paymentMethod': metodoPago,
         },
       );
       await loadMyBookings();

@@ -2028,9 +2028,18 @@ export async function recalcularReputacionPasajero(userId: string): Promise<void
       where: { passengerId: userId, passengerRating: { not: null } },
       select: { passengerRating: true },
     });
-    const { rating, ratingCount } = promedioReputacion(
-      filas.map((f) => f.passengerRating as number),
-    );
+    // También las notas de los viajes por PUESTOS: el taxista que lo recogió
+    // en un viaje compartido lo califica igual que en una carrera sola, y si
+    // esas notas no entraran aquí, el pasajero que solo comparte taxi tendría
+    // siempre «Nuevo» por mucho que viaje.
+    const puestos = await prisma.seatBooking.findMany({
+      where: { userId, passengerRating: { not: null } },
+      select: { passengerRating: true },
+    });
+    const { rating, ratingCount } = promedioReputacion([
+      ...filas.map((f) => f.passengerRating as number),
+      ...puestos.map((f) => f.passengerRating as number),
+    ]);
     await prisma.user.update({ where: { id: userId }, data: { rating, ratingCount } });
   } catch (err) {
     console.error('[reputacion] no se pudo recalcular la nota del pasajero:', err);

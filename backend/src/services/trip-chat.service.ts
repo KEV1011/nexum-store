@@ -19,6 +19,12 @@ export interface TripChatMessageDTO {
   body: string;
   imageUrl: string | null;
   sentAt: string;
+  /**
+   * Quién lo escribió, SOLO en el chat de un viaje por puestos. Ahí hablan
+   * varios pasajeros a la vez con el conductor, y «un pasajero» a secas no
+   * dice quién va a llegar tarde. En los chats de uno a uno se omite.
+   */
+  senderName?: string;
 }
 
 type ChatCb = (msg: TripChatMessageDTO) => void;
@@ -73,7 +79,57 @@ async function _assertParticipant(tripId: string, requesterId: string): Promise<
   });
   if (order) return _rol(order.userId, order.driverId, requesterId);
 
+  // El viaje por PUESTOS: un chat de GRUPO. Habla el conductor que lo tomó y
+  // cualquier pasajero con una reserva vigente — es donde se dice «voy en la
+  // esquina» o «me demoro dos minutos», y en un taxi compartido eso le importa
+  // a todos los que esperan, no solo al conductor.
+  const salida = await _participantesDeSalida(tripId);
+  if (salida) {
+    if (salida.driverId && salida.driverId === requesterId) return 'driver';
+    if (salida.nombres.has(requesterId) && requesterId !== salida.driverId) return 'client';
+    throw new TripChatError('No autorizado.');
+  }
+
   throw new TripChatError('El servicio no existe.');
+}
+
+/**
+ * Quién participa en el chat de una salida por puestos, con su nombre.
+ * `null` si el id no es de una salida. Las reservas canceladas no cuentan:
+ * quien se bajó del viaje deja de leer lo que se dicen los que siguen.
+ */
+async function _participantesDeSalida(
+  tripId: string,
+): Promise<{ driverId: string | null; nombres: Map<string, string> } | null> {
+  const salida = await prisma.pooledTrip.findUnique({
+    where: { id: tripId },
+    select: {
+      driverId: true,
+      driverName: true,
+      bookings: {
+        where: { status: 'CONFIRMED' },
+        select: { userId: true, passengerName: true },
+      },
+    },
+  });
+  if (!salida) return null;
+  const nombres = new Map<string, string>();
+  for (const b of salida.bookings) nombres.set(b.userId, b.passengerName);
+  if (salida.driverId) nombres.set(salida.driverId, salida.driverName ?? 'Conductor');
+  return { driverId: salida.driverId, nombres };
+}
+
+/** Pone el nombre en los mensajes de un chat de grupo; los demás, intactos. */
+async function _conNombres(
+  tripId: string,
+  dtos: TripChatMessageDTO[],
+): Promise<TripChatMessageDTO[]> {
+  const salida = await _participantesDeSalida(tripId);
+  if (!salida) return dtos;
+  return dtos.map((m) => {
+    const nombre = salida.nombres.get(m.senderId);
+    return nombre ? { ...m, senderName: nombre } : m;
+  });
 }
 
 function _rol(
@@ -94,7 +150,7 @@ export async function getTripChat(tripId: string, requesterId: string): Promise<
     orderBy: { createdAt: 'asc' },
     take: 500,
   });
-  return rows.map(_toDTO);
+  return _conNombres(tripId, rows.map(_toDTO));
 }
 
 /**
@@ -115,7 +171,7 @@ export async function postTripChat(
   const row = await prisma.tripMessage.create({
     data: { tripId, senderRole: role, senderId, body: body.slice(0, 1000) },
   });
-  const dto = _toDTO(row);
+  const [dto] = await _conNombres(tripId, [_toDTO(row)]);
   for (const cb of _listeners.get(tripId) ?? []) cb(dto);
   return dto;
 }
@@ -137,7 +193,7 @@ export async function postTripChatPhoto(
   const row = await prisma.tripMessage.create({
     data: { tripId, senderRole: role, senderId, body: '', imageUrl },
   });
-  const dto = _toDTO(row);
+  const [dto] = await _conNombres(tripId, [_toDTO(row)]);
   for (const cb of _listeners.get(tripId) ?? []) cb(dto);
   return dto;
 }

@@ -79,6 +79,7 @@ import {
   topeDelPuestoUrbano,
   publicarPuestoDePasajero,
   listarMisPuestosUrbanos,
+  listarMisViajesDePuesto,
   cancelarMiPuestoUrbano,
   PooledTripError,
 } from '../services/intercity-pool.service';
@@ -1281,6 +1282,7 @@ router.post(
         ...(typeof b.destLng === 'number' && { destLng: b.destLng }),
         ...(typeof b.routeName === 'string' && { routeName: b.routeName }),
         ...(typeof b.notes === 'string' && { notes: b.notes }),
+        ...(typeof b.paymentMethod === 'string' && { paymentMethod: b.paymentMethod }),
       });
       res.status(201).json({ success: true, data: trip });
     } catch (err) {
@@ -1306,6 +1308,32 @@ router.get('/pool/urbano/mios', clientAuthMiddleware, async (req, res) => {
       success: false,
       error: err instanceof Error ? err.message : 'No pudimos cargar tus viajes publicados',
     });
+  }
+});
+
+// GET /client/pool/urbano/viajes[/:id] — los viajes por puestos del pasajero:
+// los que publicó Y en los que reservó, con su reserva y dónde va el taxi.
+// Ver `listarMisViajesDePuesto`: la lista de «publicados» se queda para las
+// apps instaladas, pero solo traía los activos y el viaje desaparecía al
+// terminar.
+router.get('/pool/urbano/viajes', clientAuthMiddleware, async (req, res) => {
+  try {
+    res.json({ success: true, data: await listarMisViajesDePuesto(req.clientId!) });
+  } catch {
+    res.status(500).json({ success: false, error: 'No pudimos cargar tus viajes por puestos' });
+  }
+});
+
+router.get('/pool/urbano/viajes/:id', clientAuthMiddleware, async (req, res) => {
+  try {
+    const [viaje] = await listarMisViajesDePuesto(req.clientId!, req.params['id']!);
+    if (!viaje) {
+      res.status(404).json({ success: false, error: 'No tienes una reserva en ese viaje.' });
+      return;
+    }
+    res.json({ success: true, data: viaje });
+  } catch {
+    res.status(500).json({ success: false, error: 'No pudimos cargar el viaje' });
   }
 });
 
@@ -1358,6 +1386,11 @@ router.post('/intercity/pool/:id/book', clientAuthMiddleware, async (req, res) =
       ...(dto.boardingPointId ? { boardingPointId: dto.boardingPointId } : {}),
       ...(dto.promoCode ? { promoCode: dto.promoCode } : {}),
       ...(dto.passengers ? { passengers: dto.passengers } : {}),
+      // Puesto urbano: la recogida en el mapa y cómo paga. El servicio decide
+      // si son obligatorios (lo son para el urbano).
+      ...(typeof dto.pickupLat === 'number' && { pickupLat: dto.pickupLat }),
+      ...(typeof dto.pickupLng === 'number' && { pickupLng: dto.pickupLng }),
+      ...(typeof dto.paymentMethod === 'string' && { paymentMethod: dto.paymentMethod }),
     });
     res.status(201).json({ success: true, data: result });
   } catch (err) {

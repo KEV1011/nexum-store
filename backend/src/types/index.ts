@@ -1466,6 +1466,14 @@ export interface SeatBookingDTO {
    */
   rating?: number;
   ratingComment?: string;
+  /** El punto de recogida en el mapa (puesto urbano). Los dos o ninguno. */
+  pickupLat?: number;
+  pickupLng?: number;
+  /** Cómo paga (`lib/metodos-pago.ts`) y cómo se le dice al conductor. */
+  paymentMethod?: string;
+  paymentLabel?: string;
+  /** La nota que el conductor le puso a este pasajero. */
+  passengerRating?: number;
   /** El punto donde sube, tal como se lo dijeron al reservar. */
   boardingPoint?: PuntoEmbarqueDTO;
   /** Lo que costó, sellado al reservar. */
@@ -1530,6 +1538,15 @@ export interface BookSeatsDTO {
    * `PASAJEROS_EXIGIR_DOCUMENTO` cuando los APK nuevos estén repartidos.
    */
   passengers?: { tipoDoc: string; documento: string; nombre: string }[];
+  /**
+   * Dónde recogerlo en un viaje por puestos URBANO: el punto marcado en el
+   * mapa. Obligatorio ahí junto con `pickupAddress` (`lib/reserva-puesto-urbano`);
+   * ignorado en la salida intermunicipal.
+   */
+  pickupLat?: number;
+  pickupLng?: number;
+  /** Cómo le pagará al conductor en un puesto urbano. Opcional. */
+  paymentMethod?: string;
 }
 
 /** Un punto donde el pasajero puede subirse, con su hora. */
@@ -1737,6 +1754,8 @@ export interface PublishPassengerSeatDTO {
   /** @deprecated Igual que arriba: lo ignora el servidor. */
   farePerSeat?: number;
   notes?: string;
+  /** Cómo le pagará al conductor (`lib/metodos-pago.ts`). Opcional. */
+  paymentMethod?: string;
 }
 
 // ─── Ride Negotiation (inDriver-style: bids + chat + multi-driver) ──────────────

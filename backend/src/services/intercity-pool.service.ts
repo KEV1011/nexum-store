@@ -80,9 +80,17 @@ import {
 } from './reputacion.service';
 import { maskPhone } from './safe-contact.service';
 import { marcarEncomiendasDeSalidaEnTransito } from './encomiendas.service';
-import { sendPushToDriver } from './push.service';
+import { sendPushToClient, sendPushToDriver } from './push.service';
+import { recalcularReputacionPasajero } from './client.service';
+import { avisoAPasajeroDePuesto, type EventoPuesto } from '../lib/aviso-puesto-pasajero';
 import { cuerpoDeNuevaReserva, TITULO_NUEVA_RESERVA } from '../lib/aviso-reserva-puesto';
 import { nuevaReferencia } from '../lib/referencia';
+import {
+  etiquetaDePagoDePuesto,
+  metodoDePuesto,
+  recogidaDePuesto,
+  type RecogidaPuesto,
+} from '../lib/reserva-puesto-urbano';
 
 // ─── Ephemeral WS subscription state ──────────────────────────────────────────
 type TripCallback = (tripId: string, trip: PooledTripDTO) => void;
@@ -161,6 +169,10 @@ type DbSeatBooking = {
   seats?: { seatNumber: number }[];
   ticketCode?: string | null;
   boardedAt?: Date | null;
+  pickupLat?: number | null;
+  pickupLng?: number | null;
+  paymentMethod?: string | null;
+  passengerRating?: number | null;
 };
 
 function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
@@ -176,6 +188,15 @@ function _toBookingDTO(b: DbSeatBooking): SeatBookingDTO {
     // Ordenadas: en el manifiesto se leen de corrido y «7, 3» obliga a parar.
     seats: (b.seats ?? []).map((x) => x.seatNumber).sort((x, y) => x - y),
     pickupAddress: b.pickupAddress ?? undefined,
+    // El punto en el mapa, los dos o ninguno: media coordenada no se navega.
+    ...(b.pickupLat != null && b.pickupLng != null && {
+      pickupLat: b.pickupLat, pickupLng: b.pickupLng,
+    }),
+    // Cómo paga, ya redactado: si cada app lo tradujera, una diría «efectivo»
+    // donde la otra dice «no indicado».
+    ...(b.paymentMethod && { paymentMethod: b.paymentMethod }),
+    paymentLabel: etiquetaDePagoDePuesto(b.paymentMethod),
+    ...(b.passengerRating != null && { passengerRating: b.passengerRating }),
     notes: b.notes ?? undefined,
     status: (b.status === 'CONFIRMED' ? 'confirmed' : 'cancelled') as SeatBookingStatus,
     bookedAt: b.bookedAt.toISOString(),
@@ -341,6 +362,37 @@ async function _fetchWithBookings(id: string): Promise<DbPooledTrip | null> {
 
 function _notify(tripId: string, trip: PooledTripDTO): void {
   for (const cb of tripListeners.get(tripId) ?? []) cb(tripId, trip);
+}
+
+/**
+ * Avisa por push a los PASAJEROS de un viaje por puestos urbano.
+ *
+ * Solo URBANO a propósito: la salida intermunicipal tiene su propio flujo y
+ * cambiarle los avisos sería tocar lo que ya funciona. `excepto` es quien hizo
+ * el cambio (el autor que cancela no necesita que le cuenten que canceló).
+ * Sin `await` y tragándose el fallo: el cambio de estado ya está escrito.
+ */
+function _avisarPasajerosDeSalida(
+  t: Pick<DbPooledTrip, 'id' | 'kind' | 'driverName' | 'departureTime' | 'bookings'>,
+  evento: EventoPuesto,
+  excepto?: string,
+): void {
+  if (t.kind !== 'URBANO') return;
+  const aviso = avisoAPasajeroDePuesto(evento, {
+    conductor: t.driverName,
+    salida: t.departureTime,
+  });
+  const usuarios = new Set(
+    (t.bookings ?? [])
+      .filter((b) => b.status === 'CONFIRMED' && b.userId !== excepto)
+      .map((b) => b.userId),
+  );
+  for (const userId of usuarios) {
+    void sendPushToClient(userId, {
+      ...aviso,
+      data: { type: `pooled_urban_${evento}`, tripId: t.id },
+    }).catch(() => undefined);
+  }
 }
 
 // ─── Driver: publish & manage ─────────────────────────────────────────────────
@@ -795,6 +847,9 @@ export async function publicarPuestoDePasajero(
 
   const origenTexto = dto.originLabel.trim();
   const destinoTexto = dto.destLabel.trim();
+  const pagoAutor = metodoDePuesto(dto.paymentMethod);
+  if ('motivo' in pagoAutor) throw new PooledTripError(pagoAutor.motivo);
+  const metodoAutor = pagoAutor.metodo;
   // El precio NO viene del DTO: lo pone la plataforma. Si llegara uno desde la
   // app se descarta, igual que el servidor descarta el precio que manda el
   // cliente al pedir una carrera normal.
@@ -837,6 +892,14 @@ export async function publicarPuestoDePasajero(
         passengerName: usuario.name ?? 'Pasajero',
         passengerPhone: usuario.phone ?? '',
         seatsBooked: dto.seatsForMe,
+        // Quien publica sube en el ORIGEN: es su recogida, y sin ella el
+        // taxista vería a todos los que se sumaron menos al que armó el viaje.
+        pickupAddress: origenTexto,
+        ...(carrera.origen && {
+          pickupLat: carrera.origen.lat,
+          pickupLng: carrera.origen.lng,
+        }),
+        ...(metodoAutor && { paymentMethod: metodoAutor }),
         // Sellado igual que cualquier reserva: si el autor sube la tarifa
         // mañana, lo que él aceptó fue esto.
         fareTotal: tarifa * dto.seatsForMe,
@@ -1016,7 +1079,12 @@ export async function tomarPuestoDePasajero(
       seatAssignments: true,
     },
   });
-  return _toDTO(completo as DbPooledTrip, true);
+  const dto = _toDTO(completo as DbPooledTrip, true);
+  // Quien está mirando el viaje lo ve cambiar, y quien no, se entera por push:
+  // antes el pasajero no sabía que un taxista lo había tomado.
+  _notify(tripId, dto);
+  _avisarPasajerosDeSalida(completo as DbPooledTrip, 'tomado');
+  return dto;
 }
 
 /**
@@ -1202,6 +1270,7 @@ export async function departPooledTrip(driverId: string, tripId: string): Promis
 
   const dto = _toDTO(updated as DbPooledTrip, true);
   _notify(tripId, dto);
+  _avisarPasajerosDeSalida(updated as DbPooledTrip, 'iniciado');
   return dto;
 }
 
@@ -1225,6 +1294,7 @@ export async function completePooledTrip(driverId: string, tripId: string): Prom
 
   const dto = _toDTO(updated as DbPooledTrip, true);
   _notify(tripId, dto);
+  _avisarPasajerosDeSalida(updated as DbPooledTrip, 'terminado');
   return dto;
 }
 
@@ -1238,6 +1308,7 @@ export async function cancelPooledTrip(driverId: string, tripId: string): Promis
   });
   const dto = _toDTO(updated as DbPooledTrip, true);
   _notify(tripId, dto);
+  _avisarPasajerosDeSalida(updated as DbPooledTrip, 'cancelado');
   return dto;
 }
 
@@ -1472,6 +1543,29 @@ export async function bookSeats(
       throw new PooledTripError('Este conductor no permite reservar el vehículo completo');
     }
 
+    // ── Puesto URBANO: punto de recogida y cómo paga ──────────────────────
+    // En un taxi por puestos el conductor pasa por cada pasajero: sin el punto
+    // en el mapa no puede ni ir ni ordenar las recogidas, así que aquí la
+    // recogida es OBLIGATORIA (antes era un texto opcional). Las reglas viven
+    // en `lib/reserva-puesto-urbano.ts`; la salida intermunicipal no pasa por
+    // aquí y conserva sus puntos de embarque.
+    let recogida: RecogidaPuesto | null = null;
+    let metodoPago: string | null = null;
+    if (t.kind === 'URBANO') {
+      const r = recogidaDePuesto({
+        direccion: dto.pickupAddress,
+        lat: dto.pickupLat,
+        lng: dto.pickupLng,
+        origenLat: t.originLat,
+        origenLng: t.originLng,
+      });
+      if ('motivo' in r) throw new PooledTripError(r.motivo);
+      recogida = r.recogida;
+      const m = metodoDePuesto(dto.paymentMethod);
+      if ('motivo' in m) throw new PooledTripError(m.motivo);
+      metodoPago = m.metodo;
+    }
+
     // ── Dónde sube ────────────────────────────────────────────────────────
     // Un punto FIJO o su propia casa: una van intermunicipal hace las dos
     // cosas. El punto se SELLA, no se referencia: si la empresa le cambia la
@@ -1484,7 +1578,7 @@ export async function bookSeats(
         (t as { doorToDoor?: boolean | null }).doorToDoor,
       ),
       puntoId: dto.boardingPointId,
-      direccion: dto.pickupAddress,
+      direccion: recogida?.direccion ?? dto.pickupAddress,
     });
     if (abordaje.motivo) throw new PooledTripError(abordaje.motivo);
     const punto = abordaje.punto;
@@ -1575,6 +1669,8 @@ export async function bookSeats(
         // guardarla igual haría que el conductor viera dos sitios distintos
         // donde recoger a la misma persona.
         pickupAddress: abordaje.direccion,
+        ...(recogida && { pickupLat: recogida.lat, pickupLng: recogida.lng }),
+        ...(metodoPago && { paymentMethod: metodoPago }),
         notes: dto.notes ?? null,
         status: 'CONFIRMED',
         ...(punto && { boardingPoint: punto as unknown as Prisma.InputJsonObject }),
@@ -1829,7 +1925,135 @@ export async function cancelarMiPuestoUrbano(
   });
   const dto = _toDTO(updated as DbPooledTrip, true);
   _notify(tripId, dto);
+  _avisarPasajerosDeSalida(updated as DbPooledTrip, 'cancelado', userId);
   return dto;
+}
+
+/**
+ * Los viajes por puestos URBANOS de este pasajero: los que publicó y en los
+ * que reservó, con SU reserva y, si ya hay taxista, dónde va.
+ *
+ * POR QUÉ EXISTE. El pasajero tenía dos listas a medias: «mis publicados»
+ * (solo activos, así que al terminar el viaje DESAPARECÍA sin dejarle
+ * calificar) y «mis reservas» del intermunicipal, que la pantalla del puesto
+ * urbano ni mostraba — quien se sumaba a un viaje no lo volvía a ver. Ahora
+ * es una sola lista, por la reserva (el autor también tiene la suya), y los
+ * terminados o cancelados siguen visibles `RECIENTES_HORAS` para poder
+ * calificar o enterarse de qué pasó.
+ */
+const RECIENTES_HORAS = 24;
+
+export interface MiViajeDePuestoDTO extends PooledTripDTO {
+  myBooking: SeatBookingDTO;
+  /** Si lo publicó él: solo el autor puede cancelar el viaje entero. */
+  soyAutor: boolean;
+  /** Cuántos pasajeros hay en total, contándolo a él. */
+  pasajeros: number;
+  /**
+   * Su propio id. En el chat de GRUPO del viaje todos los pasajeros escriben
+   * con el rol «client», y sin esto la app pintaría como suyos los mensajes
+   * de los demás.
+   */
+  miUsuarioId: string;
+}
+
+export async function listarMisViajesDePuesto(
+  userId: string,
+  tripId?: string,
+): Promise<MiViajeDePuestoDTO[]> {
+  const desde = new Date(Date.now() - RECIENTES_HORAS * 3600_000);
+  const reservas = await prisma.seatBooking.findMany({
+    where: {
+      userId,
+      status: 'CONFIRMED',
+      ...(tripId && { tripId }),
+      trip: {
+        kind: 'URBANO',
+        OR: [
+          { status: { in: ['OPEN', 'FULL', 'DEPARTED'] } },
+          { updatedAt: { gte: desde } },
+        ],
+      },
+    },
+    include: {
+      seats: true,
+      trip: {
+        include: {
+          bookings: { where: { status: 'CONFIRMED' }, include: { seats: true } },
+          seatAssignments: true,
+        },
+      },
+    },
+    orderBy: { trip: { departureTime: 'asc' } },
+  });
+
+  // La posición del taxi, en UNA consulta: es lo que el pasajero mira
+  // mientras espera, y la pantalla la pide cada pocos segundos.
+  const conductores = [...new Set(
+    reservas
+      .filter((r) => ['OPEN', 'FULL', 'DEPARTED'].includes(r.trip.status))
+      .map((r) => r.trip.driverId)
+      .filter((id): id is string => id != null),
+  )];
+  const posiciones = new Map<string, { lat: number; lng: number }>();
+  if (conductores.length > 0) {
+    const filas = await prisma.driver.findMany({
+      where: { id: { in: conductores } },
+      select: { id: true, lastLat: true, lastLng: true },
+    });
+    for (const d of filas) {
+      if (d.lastLat != null && d.lastLng != null) posiciones.set(d.id, { lat: d.lastLat, lng: d.lastLng });
+    }
+  }
+
+  return reservas.map((r) => {
+    const dto = _toDTO(r.trip as DbPooledTrip, false);
+    const pos = r.trip.driverId && ['OPEN', 'FULL', 'DEPARTED'].includes(r.trip.status)
+      ? posiciones.get(r.trip.driverId)
+      : undefined;
+    if (pos) {
+      dto.driverLat = pos.lat;
+      dto.driverLng = pos.lng;
+    }
+    return {
+      ...dto,
+      myBooking: _toBookingDTO(r as unknown as DbSeatBooking),
+      soyAutor: r.trip.createdByUserId === userId,
+      pasajeros: r.trip.bookings.reduce((n, b) => n + b.seatsBooked, 0),
+      miUsuarioId: userId,
+    };
+  });
+}
+
+/**
+ * El conductor califica a un pasajero de su viaje por puestos.
+ *
+ * Mismas guardas que la calificación del viaje urbano (`rateTripPassenger`):
+ * solo SU viaje, solo terminado, y corregible. La nota alimenta la reputación
+ * del pasajero junto con las de sus carreras normales.
+ */
+export async function calificarPasajeroDePuesto(
+  driverId: string,
+  bookingId: string,
+  estrellas: unknown,
+): Promise<SeatBookingDTO> {
+  const stars = saneaEstrellas(estrellas);
+  const b = await prisma.seatBooking.findUnique({
+    where: { id: bookingId },
+    include: { trip: { select: { driverId: true, status: true } }, seats: true },
+  });
+  if (!b || b.trip.driverId !== driverId) throw new PooledTripError('Esa reserva no es de tu viaje.');
+  if (b.trip.status !== 'COMPLETED') {
+    throw new PooledTripError('Solo puedes calificar a los pasajeros de un viaje que ya terminó.');
+  }
+  if (b.status !== 'CONFIRMED') throw new PooledTripError('Ese pasajero canceló su puesto.');
+  const actualizada = await prisma.seatBooking.update({
+    where: { id: bookingId },
+    data: { passengerRating: stars },
+    include: { seats: true },
+  });
+  await recalcularReputacionPasajero(b.userId);
+  return _toBookingDTO(actualizada as unknown as DbSeatBooking);
 }
 
 /**

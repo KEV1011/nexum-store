@@ -16,10 +16,21 @@ import 'package:nexum_client/app/theme/contraste.dart';
 /// Chat en vivo del viaje normal (pasajero ↔ conductor). Reutiliza el WS
 /// singleton (`client_auth`) y el canal persistente `subscribe_trip_chat`.
 class TripChatScreen extends ConsumerStatefulWidget {
-  const TripChatScreen({required this.tripId, required this.peerName, super.key});
+  const TripChatScreen({
+    required this.tripId,
+    required this.peerName,
+    this.miId,
+    super.key,
+  });
 
   final String tripId;
   final String peerName;
+
+  /// Su propio id, SOLO en el chat de grupo del viaje por puestos: ahí varios
+  /// pasajeros escriben con el rol «client», y sin el id se pintarían como
+  /// suyos los mensajes de los demás. En los chats de uno a uno va nulo y
+  /// todo sigue como siempre.
+  final String? miId;
 
   @override
   ConsumerState<TripChatScreen> createState() => _TripChatScreenState();
@@ -32,6 +43,7 @@ class _TripMsg {
     required this.body,
     required this.imageUrl,
     required this.sentAt,
+    this.senderName,
   });
   final String id;
   final bool mine;
@@ -39,12 +51,17 @@ class _TripMsg {
   final String? imageUrl;
   final DateTime sentAt;
 
-  factory _TripMsg.fromJson(Map<String, dynamic> j) => _TripMsg(
+  /// Quién lo escribió: solo llega en el chat de grupo del viaje por puestos.
+  final String? senderName;
+
+  factory _TripMsg.fromJson(Map<String, dynamic> j, {String? miId}) => _TripMsg(
         id: (j['id'] as String?) ?? '',
-        mine: (j['senderRole'] as String?) == 'client',
+        mine: (j['senderRole'] as String?) == 'client' &&
+            (miId == null || j['senderId'] == miId),
         body: (j['body'] as String?) ?? '',
         imageUrl: j['imageUrl'] as String?,
         sentAt: DateTime.tryParse((j['sentAt'] as String?) ?? '')?.toLocal() ?? DateTime.now(),
+        senderName: j['senderName'] as String?,
       );
 }
 
@@ -75,11 +92,11 @@ class _TripChatScreenState extends ConsumerState<TripChatScreen> {
       setState(() {
         _messages
           ..clear()
-          ..addAll(e.history!.map(_TripMsg.fromJson));
+          ..addAll(e.history!.map((m) => _TripMsg.fromJson(m, miId: widget.miId)));
       });
       _scrollToBottom();
     } else if (e.message != null) {
-      final m = _TripMsg.fromJson(e.message!);
+      final m = _TripMsg.fromJson(e.message!, miId: widget.miId);
       if (_messages.any((x) => x.id == m.id)) return;
       setState(() => _messages.add(m));
       _scrollToBottom();
@@ -360,6 +377,19 @@ class _Bubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
+            // En el chat de grupo del viaje por puestos: quién lo escribió.
+            if (!mine && msg.senderName != null)
+              Padding(
+                padding: EdgeInsets.fromLTRB(hasImage ? 6 : 0, hasImage ? 2 : 0, 0, 2),
+                child: Text(
+                  msg.senderName!,
+                  style: TextStyle(
+                    color: context.textSecondaryColor,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             if (hasImage)
               GestureDetector(
                 onTap: () => onTapImage(msg.imageUrl!),
