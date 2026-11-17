@@ -40,6 +40,8 @@ import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request
 import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/shared/models/oferta_mapper.dart';
+import 'package:nexum_driver/shared/services/servicios_abiertos.dart';
+import 'package:nexum_driver/features/driver_status/presentation/widgets/servicio_abierto_sheet.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
 import 'package:nexum_driver/shared/services/push_notification_service.dart';
 import 'package:nexum_driver/shared/widgets/google_map_tiles.dart';
@@ -211,6 +213,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback(
       (_) {
         ref.read(driverProfileProvider.notifier).load();
+        // ¿Quedó un servicio abierto de antes de que la app se cerrara?
+        unawaited(_revisarServiciosAbiertos());
         // El intermunicipal está aplazado y su interruptor deshabilitado, así
         // que ya no hace falta consultar su estado al abrir el home. La carga
         // se restituye junto con el `onChanged` cuando se rehabilite.
@@ -632,6 +636,68 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         setState(() => _state = _state.copyWith(requestSecondsLeft: newLeft));
       }
     });
+  }
+
+  // ── El servicio que quedó abierto ──────────────────────────────────────────
+
+  /// Una vez por arranque de la app (es `static`: el inicio se destruye y se
+  /// vuelve a crear al ir y volver de un servicio, y preguntar cada vez
+  /// pondría la hoja delante cada vez que el conductor vuelve al inicio).
+  static bool _serviciosAbiertosRevisados = false;
+
+  /// Si la app se cerró a mitad de un servicio, al volver no lo recordaba: el
+  /// cliente esperaba a alguien que no iba a llegar, y el conductor quedaba
+  /// «en viaje» para el despacho, sin recibir nada más. Aquí se le pregunta al
+  /// servidor y se le ofrece retomarlo o soltarlo.
+  Future<void> _revisarServiciosAbiertos() async {
+    if (_serviciosAbiertosRevisados) return;
+    _serviciosAbiertosRevisados = true;
+    final List<ServicioAbierto> abiertos;
+    try {
+      abiertos = await listarServiciosAbiertos();
+    } catch (_) {
+      // Sin red al abrir: se vuelve a intentar la próxima vez que se monte
+      // el inicio, en vez de molestar con un error por algo que puede esperar.
+      _serviciosAbiertosRevisados = false;
+      return;
+    }
+    for (final s in abiertos) {
+      // Ya está atendiendo algo en esta sesión: no se le interrumpe.
+      if (!mounted || ref.read(activeTripProvider) != null) return;
+      final accion = await mostrarServicioAbierto(context, s);
+      if (!mounted) return;
+      if (accion == AccionServicioAbierto.retomar) {
+        await _retomarServicio(s);
+        return;
+      }
+      if (accion == AccionServicioAbierto.soltar) {
+        await _soltarServicio(s);
+        continue;
+      }
+      return; // «Ahora no» o cerró la hoja.
+    }
+  }
+
+  Future<void> _retomarServicio(ServicioAbierto s) async {
+    final solicitud = s.solicitud;
+    if (solicitud == null) {
+      AppSnackbar.showError(context, 'No pudimos cargar el servicio. Cierra y abre la app.');
+      return;
+    }
+    // El `await` es obligatorio: `/active-trip` se devuelve al inicio si el
+    // viaje activo todavía está vacío cuando se construye.
+    await ref.read(activeTripProvider.notifier).retomar(solicitud, s.fase);
+    if (mounted) context.push('/active-trip');
+  }
+
+  Future<void> _soltarServicio(ServicioAbierto s) async {
+    final motivo = await soltarServicioAbierto(s);
+    if (!mounted) return;
+    if (motivo != null) {
+      AppSnackbar.showError(context, motivo);
+    } else {
+      AppSnackbar.showSuccess(context, 'Lo soltaste. Ya le estamos buscando otro conductor.');
+    }
   }
 
   Future<void> _acceptTrip(TripRequestEntity request) async {

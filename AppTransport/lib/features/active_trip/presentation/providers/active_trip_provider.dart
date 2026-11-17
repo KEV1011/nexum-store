@@ -79,6 +79,20 @@ class ActiveTripNotifier extends StateNotifier<ActiveTripEntity?> {
     state = entity;
   }
 
+  // ── retomar ───────────────────────────────────────────────────────────────
+
+  /// Vuelve a un servicio que quedó abierto cuando la app se cerró, en la
+  /// fase en que iba según el servidor: 'recogida', 'en_espera' o 'en_curso'.
+  ///
+  /// Sin esto, retomar un viaje con el pasajero ya a bordo lo mostraría
+  /// «yendo a recoger» y el conductor tendría que repetir pasos que el
+  /// servidor ya dio por hechos — y que rechazaría.
+  Future<void> retomar(TripRequestEntity request, String fase) async {
+    await beginTrip(request);
+    if (fase == 'en_espera' || fase == 'en_curso') await arrivedAtPassenger();
+    if (fase == 'en_curso') await startTrip();
+  }
+
   // ── arrivedAtPassenger ────────────────────────────────────────────────────
 
   /// Registra que el conductor llegó al punto de recogida.

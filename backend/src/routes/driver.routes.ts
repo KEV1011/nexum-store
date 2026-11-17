@@ -119,6 +119,11 @@ import { leerRemesa } from '../lib/remesa-foto';
 import { leerTextoDeCarta } from '../services/carta-ocr.service';
 import { ClaveError, fijarClave, tieneClave } from '../services/clave-personal.service';
 import { codigoEsLlaveMaestra } from '../services/otp.service';
+import {
+  listarServiciosAbiertos,
+  soltarServicio,
+  ServicioAbiertoError,
+} from '../services/servicios-abiertos.service';
 
 const router = Router();
 
@@ -1376,6 +1381,33 @@ function _responderErrorDeEstado(res: Response, err: unknown, queEs: string): vo
  * respuesta. Ver `estado-por-conductor.service`: el socket no acusa recibo y
  * «entregado» liquida el domicilio y libera al repartidor.
  */
+// GET /driver/servicios-abiertos — lo que el conductor tiene asignado y sin
+// cerrar. La app lo pregunta al abrirse: si se cerró a mitad de un servicio no
+// lo recuerda, y sin esto el cliente esperaba a alguien que no iba a llegar.
+router.get('/servicios-abiertos', async (req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listarServiciosAbiertos(req.driverId!) });
+});
+
+// POST /driver/servicios/:tipo/:id/soltar — devolverlo a la búsqueda.
+// Solo antes de recoger al pasajero o la mercancía (ver lib/servicio-abierto).
+router.post('/servicios/:tipo/:id/soltar', async (req: Request, res: Response): Promise<void> => {
+  const tipo = req.params['tipo'];
+  if (tipo !== 'trip' && tipo !== 'order' && tipo !== 'errand') {
+    res.status(400).json({ success: false, error: 'Tipo de servicio desconocido.' });
+    return;
+  }
+  try {
+    await soltarServicio(req.driverId!, tipo, req.params['id']!);
+    res.json({ success: true, data: { soltado: true } });
+  } catch (err) {
+    if (err instanceof ServicioAbiertoError) {
+      res.status(err.status).json({ success: false, error: err.message });
+      return;
+    }
+    res.status(500).json({ success: false, error: 'No se pudo soltar el servicio.' });
+  }
+});
+
 router.post('/orders/:id/status', async (req: Request, res: Response): Promise<void> => {
   const status = req.body?.['status'];
   if (typeof status !== 'string' ||

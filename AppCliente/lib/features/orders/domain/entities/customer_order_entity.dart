@@ -529,6 +529,10 @@ class CustomerOrderEntity {
     bool? cobraElRepartidor,
     DateTime? promisedAt,
     bool? sinRepartidor,
+    /// Borra la ficha del conductor. Para cuando el servicio vuelve a buscar
+    /// porque el conductor lo soltó: con el `??` de siempre, la ficha del que
+    /// se fue seguiría en pantalla debajo de «Buscando conductor».
+    bool sinConductor = false,
   }) {
     return CustomerOrderEntity(
       id: id,
@@ -544,10 +548,10 @@ class CustomerOrderEntity {
       intercityFee: intercityFee,
       totalCobrado: totalCobrado,
       createdAt: createdAt,
-      driverName: driverName ?? this.driverName,
+      driverName: sinConductor ? null : (driverName ?? this.driverName),
       // Igual que el PIN: la ficha se conserva si la actualización no la trae.
-      driverCard: driverCard ?? this.driverCard,
-      driverPhone: driverPhone ?? this.driverPhone,
+      driverCard: sinConductor ? null : (driverCard ?? this.driverCard),
+      driverPhone: sinConductor ? null : (driverPhone ?? this.driverPhone),
       etaMinutes: etaMinutes ?? this.etaMinutes,
       prepMinutes: prepMinutes ?? this.prepMinutes,
       acceptedAt: acceptedAt ?? this.acceptedAt,
@@ -565,8 +569,8 @@ class CustomerOrderEntity {
       businessLng: businessLng ?? this.businessLng,
       deliveryLat: deliveryLat ?? this.deliveryLat,
       deliveryLng: deliveryLng ?? this.deliveryLng,
-      driverLat: driverLat ?? this.driverLat,
-      driverLng: driverLng ?? this.driverLng,
+      driverLat: sinConductor ? null : (driverLat ?? this.driverLat),
+      driverLng: sinConductor ? null : (driverLng ?? this.driverLng),
       hasSignature: hasSignature ?? this.hasSignature,
       signaturePath: signaturePath ?? this.signaturePath,
       signedByName: signedByName ?? this.signedByName,
