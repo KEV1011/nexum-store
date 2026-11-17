@@ -24,8 +24,8 @@ import {
   type LineaDeCompra,
 } from '../lib/comercio-no-reclamado';
 import { requestClientErrand, type ClientErrandWithPinsDTO } from './errand.service';
-import { coordsOf } from './municipality.service';
-import { anclaDeCompra, type OrigenAncla } from '../lib/ubicacion-comercio';
+import { coordsOf, plazaDeCoordenadas } from './municipality.service';
+import { anclaDeCompra, localLejosDeLaEntrega, type OrigenAncla } from '../lib/ubicacion-comercio';
 import { INTERCITY_CITY_COORDS } from '../config/constants';
 import type { BusinessCategory } from '@prisma/client';
 
@@ -146,11 +146,21 @@ export async function comprarEnComercio(
   const presupuesto = presupuestoSugerido(lineas);
 
   const plaza = negocio.citySlug ? await coordsOf(negocio.citySlug) : null;
-  const local = negocio.lat != null && negocio.lng != null ? { lat: negocio.lat, lng: negocio.lng } : null;
+  let local = negocio.lat != null && negocio.lng != null ? { lat: negocio.lat, lng: negocio.lng } : null;
+  // Un local sin ciudad y con un punto que no cae en NINGUNA plaza donde
+  // operamos: ahí no hay repartidores, así que ese punto no sirve para buscar.
+  if (local && !negocio.citySlug && !(await plazaDeCoordenadas(local.lat, local.lng))) local = null;
   const entrega = typeof dto.dropoffLat === 'number' && typeof dto.dropoffLng === 'number'
     ? { lat: dto.dropoffLat, lng: dto.dropoffLng }
     : null;
   const ancla = anclaDeCompra(local, plaza, entrega, INTERCITY_CITY_COORDS.pamplona);
+  if (localLejosDeLaEntrega(local, entrega)) {
+    // Queda escrito con nombre: es un comercio cuya ubicación hay que corregir.
+    console.warn(
+      `[Compra] «${negocio.name}» (${negocio.id}) tiene su punto lejos de donde le piden: ` +
+        `no se usa para buscar repartidor. Hay que fijar su ubicación en el mapa.`,
+    );
+  }
   // El punto del local va en el mandado solo si es de fiar: si no, el
   // repartidor vería el pin a cientos de kilómetros y la dirección escrita al
   // lado. Sin él va el centro de SU ciudad, que es lo que la oferta ya hace
@@ -167,6 +177,7 @@ export async function comprarEnComercio(
     pickupAddress: negocio.address,
     dropoffAddress: dto.dropoffAddress.trim(),
     ...(pickupFiable ? { pickupLat: pickupFiable.lat, pickupLng: pickupFiable.lng } : {}),
+    ...(entrega ? { dropoffLat: entrega.lat, dropoffLng: entrega.lng } : {}),
     purchaseBudget: presupuesto,
     ...(dto.notes?.trim() ? { notes: dto.notes.trim() } : {}),
   });

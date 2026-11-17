@@ -64,7 +64,11 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
   // comercio está en OTRA CIUDAD: la caja quedó en la taquilla de destino, en el
   // punto donde el conductor del bus firmó el acta. Anclar al comercio buscaría
   // repartidores a cientos de kilómetros y no encontraría a ninguno.
-  const enDestino = o.status === 'AT_DESTINATION_HUB' && o.hubLat != null && o.hubLng != null;
+  // `hubAt` y no solo el estado: si el repartidor de la última milla lo
+  // retoma o lo suelta, el pedido ya no está en AT_DESTINATION_HUB y la caja
+  // sigue en la taquilla, no en el comercio de la otra ciudad.
+  const enDestino = (o.status === 'AT_DESTINATION_HUB' || o.hubAt != null)
+    && o.hubLat != null && o.hubLng != null;
   const businessLat = enDestino ? o.hubLat! : (o.business.lat ?? PAMPLONA.lat);
   const businessLng = enDestino ? o.hubLng! : (o.business.lng ?? PAMPLONA.lng);
   return {

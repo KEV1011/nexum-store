@@ -265,6 +265,10 @@ class ErrandEntity {
     String? deliveryPin,
     DriverCardInfo? driverCard,
     bool? sinRepartidor,
+    /// Borra la ficha del conductor. Para cuando el servicio vuelve a buscar
+    /// porque el conductor lo soltó: con el `??` de siempre, la ficha del que
+    /// se fue seguiría en pantalla debajo de «Buscando conductor».
+    bool sinConductor = false,
   }) =>
       ErrandEntity(
         id: id ?? this.id,
@@ -277,13 +281,13 @@ class ErrandEntity {
         status: status ?? this.status,
         createdAt: createdAt ?? this.createdAt,
         notes: notes ?? this.notes,
-        messengerName: messengerName ?? this.messengerName,
-        messengerPhone: messengerPhone ?? this.messengerPhone,
-        messengerRating: messengerRating ?? this.messengerRating,
+        messengerName: sinConductor ? null : (messengerName ?? this.messengerName),
+        messengerPhone: sinConductor ? null : (messengerPhone ?? this.messengerPhone),
+        messengerRating: sinConductor ? null : (messengerRating ?? this.messengerRating),
         actualPurchaseCost: actualPurchaseCost ?? this.actualPurchaseCost,
         rating: rating ?? this.rating,
         deliveryPin: deliveryPin ?? this.deliveryPin,
-        driverCard: driverCard ?? this.driverCard,
+        driverCard: sinConductor ? null : (driverCard ?? this.driverCard),
         sinRepartidor: sinRepartidor ?? this.sinRepartidor,
       );
 }

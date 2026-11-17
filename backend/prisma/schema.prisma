@@ -1523,6 +1523,12 @@ model Errand {
   // del pueblo. Guardarlo también permite pintar el mapa y medir el recorrido.
   pickupLat        Float?
   pickupLng        Float?
+  // Punto de entrega, cuando el cliente lo eligió en el mapa o de la lista.
+  // Es el segundo sitio donde se busca repartidor si cerca de la recogida no
+  // hay nadie (el punto de un local puede estar mal; el del cliente no), y lo
+  // que deja pintar el destino real en el mapa del repartidor.
+  dropoffLat       Float?
+  dropoffLng       Float?
   serviceFee       Float          @default(6000)
   purchaseBudget   Float?
   actualCost       Float?

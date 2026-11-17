@@ -146,7 +146,10 @@ export async function rescatarDespacho(): Promise<ResumenRescate> {
   try {
     const mandados = await prisma.errand.findMany({
       where: { status: 'SEARCHING', driverId: null },
-      select: { id: true, createdAt: true, pickupLat: true, pickupLng: true },
+      select: {
+        id: true, createdAt: true, pickupLat: true, pickupLng: true,
+        dropoffLat: true, dropoffLng: true,
+      },
       take: 200,
     });
     for (const m of mandados) {
@@ -162,8 +165,8 @@ export async function rescatarDespacho(): Promise<ResumenRescate> {
         // no lo manda. Es peor que el punto real, pero mejor que no buscar.
         void startErrandMatchingCycle(
           m.id,
-          m.pickupLat ?? PAMPLONA.lat,
-          m.pickupLng ?? PAMPLONA.lng,
+          m.pickupLat ?? m.dropoffLat ?? PAMPLONA.lat,
+          m.pickupLng ?? m.dropoffLng ?? PAMPLONA.lng,
         );
         _anota(r, 'mandado', 'reanudados');
       }

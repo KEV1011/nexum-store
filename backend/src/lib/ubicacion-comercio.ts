@@ -19,10 +19,12 @@
 //      parece funcionar.
 //   2. Sin ciudad declarada (apps y formularios viejos), el punto vale solo si
 //      cae en alguna plaza donde operamos.
-//   3. El despacho se ancla al punto del comercio si es confiable; si no, al
-//      centro de SU ciudad; si tampoco se sabe, a la entrega del cliente — que
-//      casi siempre está en la misma ciudad —. El centro de Pamplona queda
-//      solo para cuando no se sabe absolutamente nada.
+//   3. El despacho mide TODO contra la entrega del cliente, que es el único
+//      punto que pone alguien que está ahí. El local ancla si es confiable y
+//      queda a distancia de compra de la entrega; si no, el centro de su
+//      ciudad cuando es la del cliente; si no, la entrega. Ver `anclaDeCompra`.
+//      (Antes el local se comparaba solo contra SU ciudad, y un local mal
+//      geocodificado cuya ciudad salió de ese mismo punto pasaba el control.)
 
 export interface Punto {
   lat: number;
@@ -93,17 +95,72 @@ export function puntoConfiable(punto: Punto | null, plaza: Punto | null): boolea
 
 export type OrigenAncla = 'comercio' | 'ciudad' | 'entrega' | 'desconocido';
 
-/** Dónde se busca repartidor para comprar en un comercio. */
+/**
+ * Hasta dónde llega una compra urbana: la distancia máxima creíble entre el
+ * local y la puerta del cliente.
+ *
+ * Una compra la hace un repartidor en moto dentro de una ciudad. Si el punto
+ * guardado del local queda más lejos que esto de donde se entrega, lo que está
+ * mal es el punto del local, no el cliente — que está parado donde pide.
+ */
+export const COMPRA_MAX_KM = Number(process.env['COMPRA_MAX_KM'] ?? 20);
+
+/**
+ * Dónde se busca repartidor para comprar en un comercio.
+ *
+ * LA ENTREGA DEL CLIENTE ES LA REFERENCIA. Es el único punto de toda la compra
+ * que viene de una persona que está ahí ahora mismo; el del local lo puso un
+ * geocodificador a partir de un texto, y la ciudad del local pudo salir de ese
+ * mismo punto (el relleno de plazas se la puso por cercanía). O sea que un
+ * local mal geocodificado puede estar «bien» contra su propia ciudad —punto en
+ * Bogotá, ciudad Bogotá— y aun así ser un restaurante de Pamplona al que le
+ * pide alguien de Pamplona. Compararlo solo contra su ciudad dejaba esa compra
+ * buscando repartidor a 400 km, diez minutos, sin decirle nada a nadie.
+ *
+ * Con entrega conocida:
+ *   1. el local, si su punto es de su ciudad Y queda a distancia de compra;
+ *   2. el centro de la ciudad del local, si esa ciudad es la del cliente;
+ *   3. la entrega.
+ * Sin entrega (dirección escrita a mano, sin punto) no hay contra qué medir y
+ * se hace lo de antes: local confiable → su ciudad → valor por defecto.
+ */
 export function anclaDeCompra(
   comercio: Punto | null,
   plaza: Punto | null,
   entrega: Punto | null,
   porDefecto: Punto,
 ): Punto & { origen: OrigenAncla } {
-  if (valido(comercio) && puntoConfiable(comercio, plaza)) return { ...comercio, origen: 'comercio' };
+  const localFiable = valido(comercio) && puntoConfiable(comercio, plaza);
+  if (valido(entrega)) {
+    if (localFiable && kmEntre(comercio!, entrega) <= COMPRA_MAX_KM) {
+      return { lat: comercio!.lat, lng: comercio!.lng, origen: 'comercio' };
+    }
+    if (valido(plaza) && kmEntre(plaza, entrega) <= RADIO_PLAZA_KM) {
+      return { lat: plaza.lat, lng: plaza.lng, origen: 'ciudad' };
+    }
+    return { lat: entrega.lat, lng: entrega.lng, origen: 'entrega' };
+  }
+  if (localFiable) return { lat: comercio!.lat, lng: comercio!.lng, origen: 'comercio' };
   if (valido(plaza)) return { lat: plaza.lat, lng: plaza.lng, origen: 'ciudad' };
-  if (valido(entrega)) return { lat: entrega.lat, lng: entrega.lng, origen: 'entrega' };
   return { ...porDefecto, origen: 'desconocido' };
+}
+
+/**
+ * ¿El punto guardado del local contradice a la entrega? Sirve para dejarlo
+ * escrito en el registro: es un comercio cuya ubicación hay que corregir.
+ */
+export function localLejosDeLaEntrega(comercio: Punto | null, entrega: Punto | null): boolean {
+  return valido(comercio) && valido(entrega) && kmEntre(comercio, entrega) > COMPRA_MAX_KM;
+}
+
+/** Dos puntos que para el despacho son el mismo sitio (menos de 300 m). */
+export function mismoSitio(a: Punto | null, b: Punto | null): boolean {
+  return valido(a) && valido(b) && kmEntre(a, b) < 0.3;
+}
+
+/** Un punto usable: números finitos y no (0,0). */
+export function puntoValido(p: Punto | null | undefined): p is Punto {
+  return valido(p);
 }
 
 export type MotivoDudoso = 'sin-punto' | 'sin-plaza' | 'lejos-de-su-ciudad';

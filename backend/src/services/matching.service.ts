@@ -10,6 +10,7 @@ import { avisarEstadoMandado, getErrandOfferInfo } from './errand.service';
 import { getOrderOfferInfo } from './order-offer.service';
 import { evaluateGeoJump } from './fraud.service';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
+import { mismoSitio, puntoValido } from '../lib/ubicacion-comercio';
 import { onDriverHeartbeat } from './safety-alerts.service';
 import { pilotSkipVerification } from './kyc.service';
 import { docKillSwitchEnforced } from './document-expiry.service';
@@ -203,6 +204,33 @@ export function cancelSearchRetry(key: string): void {
     clearTimeout(t);
     searchRetries.delete(key);
   }
+}
+
+// ─── Quien acaba de soltar un servicio no lo recibe de vuelta ─────────────────
+//
+// Al soltar, el conductor vuelve a EN LÍNEA y es, casi siempre, el más cercano
+// a la recogida: sin esto la primera oferta de la búsqueda nueva le llegaría a
+// él mismo, que acaba de decir que no puede. Diez minutos y se olvida.
+const SOLTADO_MS = 10 * 60_000;
+const _soltadoPor = new Map<string, { driverId: string; hasta: number }>();
+
+export function marcarSoltadoPor(kind: 'trip' | 'errand' | 'order', id: string, driverId: string): void {
+  _soltadoPor.set(`${kind}:${id}`, { driverId, hasta: Date.now() + SOLTADO_MS });
+  if (_soltadoPor.size > 500) {
+    const ahora = Date.now();
+    for (const [k, v] of _soltadoPor) if (v.hasta < ahora) _soltadoPor.delete(k);
+  }
+}
+
+function _sinQuienLoSolto(
+  kind: 'trip' | 'errand' | 'order',
+  id: string,
+  candidatos: NearbyDriver[],
+): NearbyDriver[] {
+  const s = _soltadoPor.get(`${kind}:${id}`);
+  if (!s) return candidatos;
+  if (s.hasta < Date.now()) { _soltadoPor.delete(`${kind}:${id}`); return candidatos; }
+  return candidatos.filter((c) => c.driverId !== s.driverId);
 }
 
 // ─── A quién se le ofreció qué, hace poco ────────────────────────────────────
@@ -720,7 +748,7 @@ export async function startMatchingCycle(
     select: { serviceType: true, passengerId: true },
   });
   const vehicleTypes = vehicleTypesForService(trip?.serviceType);
-  const candidates = await findNearestAvailableDrivers(
+  const candidates = _sinQuienLoSolto('trip', tripId, await findNearestAvailableDrivers(
     originLat,
     originLng,
     SEARCH_RADIUS_M,
@@ -729,7 +757,7 @@ export async function startMatchingCycle(
     'trip',
     vehicleTypes,
     trip?.passengerId ?? null,
-  );
+  ));
   if (candidates.length === 0) {
     console.log(
       `[Matching] Sin conductores a ${SEARCH_RADIUS_M} m del viaje ${tripId} ` +
@@ -960,18 +988,37 @@ export async function startErrandMatchingCycle(
 
   const duenoMandado = await prisma.errand.findUnique({
     where: { id: errandId },
-    select: { userId: true },
+    select: { userId: true, dropoffLat: true, dropoffLng: true },
   });
-  const candidates = await findNearestAvailableDrivers(
-    pickupLat,
-    pickupLng,
-    SEARCH_RADIUS_M,
-    MAX_CANDIDATES,
-    GEO_FRESHNESS_S,
-    'errand',
-    null,
-    duenoMandado?.userId ?? null,
-  );
+  const buscarCercaDe = async (lat: number, lng: number) => _sinQuienLoSolto('errand', errandId,
+    await findNearestAvailableDrivers(
+      lat,
+      lng,
+      SEARCH_RADIUS_M,
+      MAX_CANDIDATES,
+      GEO_FRESHNESS_S,
+      'errand',
+      null,
+      duenoMandado?.userId ?? null,
+    ));
+  let candidates = await buscarCercaDe(pickupLat, pickupLng);
+  // SEGUNDO SITIO: la puerta del cliente. El punto de recogida de una compra
+  // lo puso un geocodificador a partir de la dirección del local y puede
+  // estar a kilómetros de donde de verdad queda; el de entrega lo eligió una
+  // persona que está ahí. Si cerca de la recogida no hay nadie, quien esté
+  // cerca del cliente puede ir: lee la dirección del local en la oferta.
+  if (candidates.length === 0) {
+    const entrega = { lat: duenoMandado?.dropoffLat ?? NaN, lng: duenoMandado?.dropoffLng ?? NaN };
+    if (puntoValido(entrega) && !mismoSitio(entrega, { lat: pickupLat, lng: pickupLng })) {
+      candidates = await buscarCercaDe(entrega.lat, entrega.lng);
+      if (candidates.length > 0) {
+        console.log(
+          `[Matching] Mandado ${errandId}: nadie cerca de la recogida; se ofrece a quien está ` +
+            'cerca de la entrega',
+        );
+      }
+    }
+  }
   if (candidates.length === 0) {
     console.log(
       `[Matching] No drivers available within ${SEARCH_RADIUS_M}m for errand ${errandId} ` +
@@ -1217,7 +1264,7 @@ export async function startOrderMatchingCycle(orderId: string, attempt = 0): Pro
     where: { id: orderId },
     select: { userId: true },
   });
-  const candidates = await findNearestAvailableDrivers(
+  const candidates = _sinQuienLoSolto('order', orderId, await findNearestAvailableDrivers(
     info.lat,
     info.lng,
     SEARCH_RADIUS_M,
@@ -1226,7 +1273,7 @@ export async function startOrderMatchingCycle(orderId: string, attempt = 0): Pro
     'order',
     null,
     duenoPedido?.userId ?? null,
-  );
+  ));
   if (candidates.length === 0) {
     console.log(
       `[Matching] No drivers available within ${SEARCH_RADIUS_M}m for order ${orderId} ` +

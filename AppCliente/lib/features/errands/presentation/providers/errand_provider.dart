@@ -73,6 +73,8 @@ class ErrandNotifier extends StateNotifier<ErrandState> {
 
     final updated = current.copyWith(
       status: status,
+      // De vuelta a buscar: el mandadero anterior lo soltó.
+      sinConductor: status == ErrandStatus.searching,
       messengerName: (dto['driverName'] as String?) ?? current.messengerName,
       messengerPhone: (dto['driverPhone'] as String?) ?? current.messengerPhone,
       // fromJson devuelve null si el aviso no trae ficha: se conserva la que

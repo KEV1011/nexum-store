@@ -284,6 +284,15 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
 
       return order.copyWith(
         status: status,
+        // Un pedido que vuelve a estos estados no tiene repartidor: el que
+        // tenía lo soltó. Sin borrarlo, su ficha seguía en pantalla.
+        sinConductor: const {
+          CustomerOrderStatus.pending,
+          CustomerOrderStatus.confirmed,
+          CustomerOrderStatus.preparing,
+          CustomerOrderStatus.inIntercityTransit,
+          CustomerOrderStatus.atDestinationHub,
+        }.contains(status),
         // El PIN solo viene por REST (GET /client/orders/:id); el WS usa el
         // mismo DTO que ve el repartidor y nunca lo trae. Se adopta si llega
         // —caso de reinstalar la app— y si no, se conserva el que ya había.

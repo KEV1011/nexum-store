@@ -106,6 +106,16 @@ function emitirCambioDePedido(
   for (const cb of businessOrderListeners.get(businessId) ?? []) cb(summary);
 }
 
+/** Lo mismo, leyendo el pedido de la base: para quien no lo tiene a mano. */
+export async function avisarCambioDePedido(orderId: string): Promise<void> {
+  const o = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { lines: true, business: { select: { name: true } } },
+  });
+  if (!o) return;
+  emitirCambioDePedido(orderId, o.businessId, _toSummary(o, o.business?.name ?? 'Negocio', o.lines));
+}
+
 // Estimación de trayecto (min) que se suma al tiempo de preparación para el ETA
 // total que ve el cliente. Configurable por negocio en una fase posterior.
 const DELIVERY_TRAVEL_MIN = 15;

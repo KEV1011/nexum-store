@@ -366,6 +366,9 @@ class TransportNotifier extends StateNotifier<TransportState> {
 
       return r.copyWith(
         status: status,
+        // De vuelta a buscar: el conductor anterior soltó el viaje. Su ficha
+        // ya no dice nada cierto, y sin esto se quedaba en pantalla.
+        sinConductor: status == TransportStatus.searching,
         // El PIN solo llega por las vistas propias del cliente (creación y
         // `GET /client/trips/:id`); si el mensaje no lo trae, se conserva.
         deliveryPin: payload['deliveryPin'] as String? ?? r.deliveryPin,

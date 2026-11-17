@@ -749,12 +749,14 @@ export async function diagnoseMandado(refOId: string): Promise<{
     select: {
       id: true, requestRef: true, status: true, driverId: true,
       pickupLat: true, pickupLng: true, pickupAddress: true,
+      dropoffLat: true, dropoffLng: true,
     },
   });
   if (!e) return null;
   const sinPunto = e.pickupLat == null || e.pickupLng == null;
-  const lat = e.pickupLat ?? INTERCITY_CITY_COORDS.pamplona.lat;
-  const lng = e.pickupLng ?? INTERCITY_CITY_COORDS.pamplona.lng;
+  // El mismo orden que el rescate: recogida, si no la entrega del cliente.
+  const lat = e.pickupLat ?? e.dropoffLat ?? INTERCITY_CITY_COORDS.pamplona.lat;
+  const lng = e.pickupLng ?? e.dropoffLng ?? INTERCITY_CITY_COORDS.pamplona.lng;
   const { plazaDeCoordenadas, nombreMunicipioSync } = await import('./municipality.service');
   const plaza = await plazaDeCoordenadas(lat, lng);
   return {
