@@ -85,7 +85,7 @@ const List<Antojo> kAntojos = [
     'perro caliente', 'perro', 'perrito', 'hot dog', 'hotdog',
   ]),
   Antojo(clave: 'pizza', nombre: 'Pizza', palabras: [
-    'pizza', 'pizzeta', 'calzone',
+    'pizza', 'pizzeta', 'calzone', 'pizze',
   ]),
   Antojo(clave: 'sushi', nombre: 'Sushi', palabras: [
     'sushi', 'maki', 'nigiri', 'sashimi', 'temaki', 'roll',
@@ -100,7 +100,7 @@ const List<Antojo> kAntojos = [
     'sandwich', 'sanduche', 'sanduchito', 'wrap', 'panini', 'sandwiche',
   ]),
   Antojo(clave: 'ensaladas', nombre: 'Ensaladas', palabras: [
-    'ensalada', 'bowl',
+    'ensalada', 'bowl', 'insalata', 'insalate',
   ]),
   Antojo(clave: 'pastas', nombre: 'Pastas', palabras: [
     'pasta', 'espagueti', 'spaghetti', 'lasana', 'fettuccine', 'fetuccini',
@@ -258,6 +258,17 @@ final RegExp _noEsPlato = RegExp(
   r'empaque|desechable|papa|papas|papitas|francesa)(s|es)?( |$)',
 );
 
+/// Secciones de OTRO tiempo de la comida: lo que va en ENTRADAS o en
+/// ACOMPAÑAMIENTOS de una pizzería no es una pizza. Sin esto, en «Pieros
+/// Pizza» la «Focaccina» y la «Mozzarella in Carrozza» de las entradas salían
+/// en el antojo de pizza con el dibujo de la pizza.
+final RegExp _seccionDeOtroTiempo = RegExp(
+  r'(^| )(entrada|entradas|entrante|entrantes|antipasto|antipasti|aperitivo|'
+  r'aperitivos|para compartir|para picar|acompanamiento|acompanamientos|'
+  r'acompanante|acompanantes|guarnicion|guarniciones|insalata|insalate|'
+  r'contorni)( |$)',
+);
+
 /// El antojo de un plato (reglas 1, 2, 3 y 5). Null si no es de ninguno.
 ///
 /// `delLocal` es el antojo del local entero ([antojoDelLocal]): solo se usa
@@ -285,7 +296,8 @@ Antojo? antojoDeProducto(ProductEntity p, {Antojo? delLocal}) {
   }
   if (delLocal != null &&
       !_noEsPlato.hasMatch(nombre) &&
-      !_noEsPlato.hasMatch(seccion)) {
+      !_noEsPlato.hasMatch(seccion) &&
+      !_seccionDeOtroTiempo.hasMatch(seccion)) {
     return delLocal;
   }
   return null;

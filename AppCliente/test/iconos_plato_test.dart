@@ -110,6 +110,11 @@ void main() {
     // Lo que dice ser otra cosa conserva su dibujo.
     expect(enPieros('Coca-Cola 1.5 L'), 'gaseosa');
     expect(enPieros('Agua sin gas', seccion: 'Bebidas'), 'gaseosa');
+    // Las entradas y ensaladas de la pizzería llevan lo suyo, no la pizza.
+    expect(enPieros('Focaccina', seccion: 'Entradas'), 'panaderia');
+    expect(enPieros('Mozzarella in Carrozza', seccion: 'Entradas'), 'queso');
+    expect(enPieros('César', seccion: 'Insalate'), 'ensaladas');
+    expect(enPieros('Bruschetta', seccion: 'Antipasti'), isNull);
   });
 
   test('un ingrediente en el nombre no le gana al plato de la sección', () {

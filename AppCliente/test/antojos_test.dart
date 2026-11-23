@@ -153,6 +153,32 @@ void main() {
       expect(antojosPresentes([pieros]).map((a) => a.clave), ['pizza']);
     });
 
+    test('las entradas y ensaladas de la pizzería NO son pizza', () {
+      // Lo que se veía en «Pieros Pizza → Mostrando pizza»: la Focaccina, la
+      // Mozzarella in Carrozza y la César con el dibujo de la pizza.
+      final pieros = local('Pieros Pizza', [
+        plato('Hawaiana', seccion: 'Pizze'),
+        plato('Focaccina', seccion: 'Entradas'),
+        plato('Mozzarella in Carrozza', seccion: 'Entradas'),
+        plato('Bruschetta', seccion: 'Antipasti'),
+        plato('César', seccion: 'Insalate'),
+        plato('Margarita', seccion: 'Especiales'),
+      ]);
+      final delLocal = antojoDelLocal(pieros);
+      expect(delLocal?.clave, 'pizza');
+      expect(platosDelAntojo(pieros, 'pizza').map((p) => p.name),
+          ['Hawaiana', 'Margarita']);
+      expect(
+          antojoDeProducto(plato('César', seccion: 'Insalate'),
+                  delLocal: delLocal)
+              ?.clave,
+          'ensaladas');
+      expect(
+          antojoDeProducto(plato('Focaccina', seccion: 'Entradas'),
+              delLocal: delLocal),
+          isNull);
+    });
+
     test('o la gran mayoría de sus platos', () {
       final toscana = local('La Toscana', [
         plato('Pizza hawaiana'),

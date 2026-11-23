@@ -67,7 +67,7 @@ const _a = 'assets/antojos/';
 const List<IconoPlato> kIconosPlato = [
   // ── Comidas rápidas y de mano ──
   IconoPlato('${_a}hamburguesas.png', ['hamburguesa', 'burger', 'hamburger']),
-  IconoPlato('${_a}pizza.png', ['pizza', 'pizzeta', 'calzone']),
+  IconoPlato('${_a}pizza.png', ['pizza', 'pizzeta', 'calzone', 'pizze']),
   IconoPlato('${_a}perros.png', [
     'perro caliente', 'perro', 'perrito', 'hot dog', 'hotdog',
   ]),
@@ -120,7 +120,9 @@ const List<IconoPlato> kIconosPlato = [
     'pasta', 'espagueti', 'spaghetti', 'lasana', 'fettuccine', 'fetuccini',
     'raviol', 'ravioli', 'macarron', 'canelon',
   ]),
-  IconoPlato('${_a}ensaladas.png', ['ensalada', 'ensalada cesar']),
+  IconoPlato('${_a}ensaladas.png', [
+    'ensalada', 'ensalada cesar', 'insalata', 'insalate',
+  ]),
   IconoPlato('${_p}frutas.png', [
     'ensalada de frutas', 'salpicon', 'fruta', 'picada de frutas',
     'coctel de frutas', 'frutas picadas',
@@ -167,13 +169,16 @@ const List<IconoPlato> kIconosPlato = [
     'mazorca', 'mazorcada', 'maiz', 'choclo', 'desgranado', 'elote',
   ], ingrediente: true),
   IconoPlato('${_p}aguacate.png', ['aguacate', 'guacamole'], ingrediente: true),
-  IconoPlato('${_p}queso.png', ['queso', 'tabla de quesos'], ingrediente: true),
+  IconoPlato('${_p}queso.png', [
+    'queso', 'tabla de quesos', 'mozzarella', 'mozarella',
+  ], ingrediente: true),
   IconoPlato('${_p}crispetas.png', ['crispetas', 'palomitas', 'popcorn']),
 
   // ── Panadería ──
   IconoPlato('${_a}panaderia.png', [
     'pan', 'pandebono', 'pan de bono', 'almojabana', 'pandeyuca',
-    'pan de queso', 'mogolla', 'roscon', 'mantecada', 'achira',
+    'pan de queso', 'mogolla', 'roscon', 'mantecada', 'achira', 'focaccia',
+    'focaccina', 'pan focaccia',
   ]),
   IconoPlato('${_p}croissant.png', ['croissant', 'cachito', 'medialuna']),
   IconoPlato('${_p}pancakes.png', ['pancake', 'panqueque', 'crepe']),
