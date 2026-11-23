@@ -92,6 +92,8 @@ const CONOCIDAS_EXTRA = [
   'granizada', 'helados', 'congelada', 'congelado', 'escarchar', 'reduccion',
   'gratinar', 'banada', 'banado', 'rellenas', 'rellenos', 'apanadas', 'apanados',
   'sofrito', 'hogao', 'guiso', 'adobo', 'adobada', 'adobado', 'aliñada', 'alinada',
+  //  · Como los escribe la carta de aquí (no son erratas: «Calentao», «Bolognesa»)
+  'calentao', 'bolognesa', 'stroganoff', 'fettuccine', 'espagueti', 'pomodoro',
   //  · Bebidas y bar
   'cervezas', 'michelada', 'micheladas', 'coctel', 'cocteles', 'shot', 'shots',
   'tequila', 'aguardiente', 'ron', 'ginebra', 'whisky', 'vodka', 'brandy', 'vino',

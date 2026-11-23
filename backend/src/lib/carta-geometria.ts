@@ -129,6 +129,67 @@ function huecoDeColumna(palabras: PalabraOcr[]): number {
   return Math.max(alto * 3, ancho * 0.06);
 }
 
+/**
+ * Los canales ESTRECHOS entre columnas: los que el umbral general no ve.
+ *
+ * En una carta a tres columnas apretadas —la de la pizzería, con los sabores
+ * en columnas de un cuarto de página— el hueco entre columnas es menor que el
+ * umbral (el 6 % del ancho), y los ingredientes de tres pizzas distintas salían
+ * pegados en un solo renglón. Un hueco así solo cuenta como canal con tres
+ * pruebas a la vez, para no partir nunca la línea de un plato:
+ *
+ * - casi ninguna palabra lo pisa (el mismo tope que el canal ancho);
+ * - al menos la cuarta parte de los renglones tiene texto a los DOS lados;
+ * - y a cada lado hay renglones que NO tienen pareja en el otro: dos columnas
+ *   corren cada una a su ritmo. En una tabla («nombre · descripción»), en
+ *   cambio, cada renglón de un lado tiene su pareja, y esa tabla no se parte.
+ */
+function canalesFinos(renglones: PalabraOcr[][]): Array<{ x0: number; x1: number }> {
+  const todas = renglones.flat();
+  if (todas.length === 0 || renglones.length < 6) return [];
+  const alto = mediana(todas.map((p) => p.y1 - p.y0));
+  const minimo = alto * 1.5;
+  const n = renglones.length;
+  const tope = Math.max(1, Math.floor(n * 0.15));
+  const bordes = [...new Set(todas.flatMap((p) => [p.x0, p.x1]))].sort((a, b) => a - b);
+  const pisan = (x: number) => renglones.filter((r) => r.some((p) => p.x0 < x && p.x1 > x)).length;
+
+  const libres: Array<{ x0: number; x1: number }> = [];
+  for (let k = 0; k + 1 < bordes.length; k++) {
+    const a = bordes[k]!;
+    const b = bordes[k + 1]!;
+    const c = pisan((a + b) / 2);
+    if (c > tope || c * 3 >= n) continue;
+    const ultimo = libres[libres.length - 1];
+    if (ultimo && ultimo.x1 === a) ultimo.x1 = b;
+    else libres.push({ x0: a, x1: b });
+  }
+  // De izquierda a derecha: cada canal se compara con la columna que tiene
+  // justo a su izquierda (desde el canal anterior), no con toda la página —
+  // si no, en una carta a tres columnas casi ningún renglón quedaba «sin
+  // pareja» a la izquierda del segundo canal.
+  const aceptados: Array<{ x0: number; x1: number }> = [];
+  let desde = -Infinity;
+  for (const c of libres) {
+    if (c.x1 - c.x0 < minimo) continue;
+    let pares = 0;
+    let soloIzq = 0;
+    let soloDer = 0;
+    for (const r of renglones) {
+      const izq = r.some((p) => p.x1 <= c.x0 && p.x0 >= desde);
+      const der = r.some((p) => p.x0 >= c.x1);
+      if (izq && der) pares++;
+      else if (izq) soloIzq++;
+      else if (der) soloDer++;
+    }
+    if (pares >= Math.max(3, n * 0.25) && soloIzq >= 2 && soloDer >= 2) {
+      aceptados.push(c);
+      desde = c.x1;
+    }
+  }
+  return aceptados;
+}
+
 interface Reparto {
   bandas: Array<{ x0: number; x1: number }>;
   /** La columna de cada palabra, en el mismo orden que la entrada. */
@@ -163,12 +224,16 @@ function repartirEnColumnas(palabras: PalabraOcr[]): Reparto {
   // Los renglones de TODA la página, partidos en tramos donde hay un hueco.
   const indices = palabras.map((p, i) => ({ ...p, i }));
   const globales = agruparEnRenglones(indices);
+  // Los canales estrechos van primero: un hueco que los contiene no se salta
+  // al armar los tramos, aunque sea más corto que el umbral.
+  const finos = canalesFinos(globales);
+  const separaFino = (a: number, b: number) => finos.some((c) => a <= c.x0 + 0.5 && b >= c.x1 - 0.5);
   const tramos: Array<{ x0: number; x1: number; renglon: number; idx: number[] }> = [];
   globales.forEach((r, ri) => {
     const orden = [...r].sort((a, b) => a.x0 - b.x0);
     let actual: { x0: number; x1: number; renglon: number; idx: number[] } | null = null;
     for (const w of orden) {
-      if (actual && w.x0 - actual.x1 <= umbral) {
+      if (actual && w.x0 - actual.x1 <= umbral && !separaFino(actual.x1, w.x0)) {
         actual.x1 = Math.max(actual.x1, w.x1);
         actual.idx.push(w.i);
       } else {
@@ -198,10 +263,13 @@ function repartirEnColumnas(palabras: PalabraOcr[]): Reparto {
   }
   const renglonesA = (lado: (p: PalabraOcr) => boolean) =>
     new Set(globales.flatMap((r, ri) => (r.some(lado) ? [ri] : []))).size;
-  const cortes = canales.filter((c) => c.x1 - c.x0 > umbral
+  const anchos = canales.filter((c) => c.x1 - c.x0 > umbral
     && c.x0 > minX && c.x1 < maxX
     && renglonesA((p) => p.x1 <= c.x0) >= 2
     && renglonesA((p) => p.x0 >= c.x1) >= 2);
+  // Un canal estrecho que ya está dentro de uno ancho no corta dos veces.
+  const cortes = [...anchos, ...finos.filter((f) => !anchos.some((c) => c.x0 < f.x1 && f.x0 < c.x1))]
+    .sort((a, b) => a.x0 - b.x0);
 
   let bandas: Array<{ x0: number; x1: number }> = [];
   let desde = minX;
@@ -213,13 +281,42 @@ function repartirEnColumnas(palabras: PalabraOcr[]): Reparto {
 
   // Cada tramo va a la columna donde EMPIEZA: un renglón que cruza el canal
   // se lee entero, en la columna por la que una persona empezaría a leerlo.
-  const bandaDe = (x: number) => {
-    let b = 0;
-    for (let j = 0; j < bandas.length; j++) if (bandas[j]!.x0 <= x + 0.5) b = j;
-    return b;
-  };
+  //
+  // Se compara con el CENTRO del canal y no con su borde derecho: el canal
+  // llega hasta donde empieza la primera palabra de la columna, y una palabra
+  // que empieza un píxel antes («Red velvet» en 2527 con el canal hasta 2528)
+  // quedaba en la columna de la izquierda, pegada a otro postre.
+  const bandaDe = (x: number) => cortes.filter((c) => (c.x0 + c.x1) / 2 <= x).length;
+  // Un tramo que cruza el canal con un hueco ancho DENTRO del canal
+  // no cruza: son dos cosas, una a cada lado («• Croissant de   • Croissant
+  // de» con el segundo ya en la otra columna). Se parte ahí. El pie centrado
+  // («BAJOS $8.000 / ALTOS $10.000») no tiene ese hueco y sigue entero.
+  const altoLetra = mediana(palabras.map((p) => p.y1 - p.y0));
+  const partidos: Array<{ x0: number; idx: number[] }> = [];
+  for (const t of tramos) {
+    const orden = [...t.idx].sort((a, b) => palabras[a]!.x0 - palabras[b]!.x0);
+    let actual = { x0: palabras[orden[0]!]!.x0, idx: [orden[0]!] };
+    let fin = palabras[orden[0]!]!.x1;
+    let prevAlto = palabras[orden[0]!]!.y1 - palabras[orden[0]!]!.y0;
+    for (const i of orden.slice(1)) {
+      const w = palabras[i]!;
+      // El hueco se mide con la letra de ESAS palabras: entre las palabras
+      // de un título grande el espacio normal ya es más ancho que la letra
+      // del cuerpo.
+      const letra = Math.max(altoLetra, w.y1 - w.y0, prevAlto);
+      if (w.x0 - fin >= letra * 1.5 && cortes.some((c) => fin < c.x1 && w.x0 > c.x0)) {
+        partidos.push(actual);
+        actual = { x0: w.x0, idx: [i] };
+      } else {
+        actual.idx.push(i);
+      }
+      fin = Math.max(fin, w.x1);
+      prevAlto = w.y1 - w.y0;
+    }
+    partidos.push(actual);
+  }
   const columna = new Array<number>(palabras.length).fill(0);
-  for (const t of tramos) for (const i of t.idx) columna[i] = bandaDe(t.x0);
+  for (const t of partidos) for (const i of t.idx) columna[i] = bandaDe(t.x0);
 
   // Las bandas de solo precios vuelven a la columna de su izquierda.
   for (let b = bandas.length - 1; b >= 1; b--) {
@@ -308,6 +405,87 @@ function etiquetasLaterales(palabras: PalabraOcr[]): EtiquetaLateral[] {
   return salida;
 }
 
+/** Una viñeta suelta: «•», «·», «●»… */
+const RE_VINETA = /^[•·●▪◦∙‣]$/u;
+
+/**
+ * Los BLOQUES DE VIÑETAS LADO A LADO dentro de una columna:
+ *
+ *     • Mousse          • Brownie
+ *       $ 16.000          $ 9.000
+ *     • Milhojas        • Brownie con helado
+ *       $ 16.000          $ 16.000
+ *                       • Copa de helado
+ *                         $ 9.000
+ *
+ * La columna es una sola para la página, pero ese trozo trae dos listas, y
+ * renglón por renglón se leía «Mousse Brownie» sin precio y «$16.000 $9.000»
+ * como otro producto. El bloque empieza en un renglón con DOS viñetas o más
+ * separadas por un hueco, sigue mientras los renglones de debajo quepan en
+ * esas mismas franjas sin cruzarlas, y cada franja se lee entera, una después
+ * de la otra.
+ *
+ * SOLO CON VIÑETAS, a propósito: dos grupos de palabras lado a lado sin viñeta
+ * también son la tabla «nombre · descripción», y esa no se parte.
+ */
+function partirPorVinetas(palabras: PalabraOcr[]): Array<{ palabras: PalabraOcr[]; banda?: { x0: number; x1: number } }> {
+  if (!palabras.some((p) => RE_VINETA.test(p.texto.trim()))) return [{ palabras }];
+  const alto = Math.max(1, mediana(palabras.map((p) => p.y1 - p.y0)));
+  const renglones = agruparEnRenglones(palabras);
+  const inicios = (r: PalabraOcr[]): number[] => {
+    const orden = [...r].sort((a, b) => a.x0 - b.x0);
+    const salida: number[] = [];
+    orden.forEach((p, k) => {
+      if (!RE_VINETA.test(p.texto.trim())) return;
+      const antes = orden[k - 1];
+      if (!antes || p.x0 - antes.x1 >= alto * 2) salida.push(p.x0);
+    });
+    return salida;
+  };
+
+  const partes: Array<{ palabras: PalabraOcr[]; banda?: { x0: number; x1: number } }> = [];
+  let suelta: PalabraOcr[] = [];
+  let r = 0;
+  while (r < renglones.length) {
+    const starts = inicios(renglones[r]!);
+    if (starts.length < 2) { suelta.push(...renglones[r]!); r++; continue; }
+    // Los bordes entre franjas, un poco antes de cada viñeta.
+    const bordes = starts.slice(1).map((x) => x - alto);
+    const cruza = (fila: PalabraOcr[]) => fila.some((p) => bordes.some((b) => p.x0 < b && p.x1 > b));
+    const bloque: PalabraOcr[][] = [renglones[r]!];
+    let pie = Math.max(...renglones[r]!.map((p) => p.y1));
+    let k = r + 1;
+    while (k < renglones.length) {
+      const fila = renglones[k]!;
+      const cima = Math.min(...fila.map((p) => p.y0));
+      if (cima - pie > alto * 3 || cruza(fila)) break;
+      if (fila.some((p) => p.x0 < starts[0]! - alto * 2)) break;
+      bloque.push(fila);
+      pie = Math.max(pie, ...fila.map((p) => p.y1));
+      k++;
+    }
+    if (suelta.length > 0) partes.push({ palabras: suelta });
+    suelta = [];
+    const franjas: PalabraOcr[][] = starts.map(() => []);
+    for (const p of bloque.flat()) {
+      let j = 0;
+      while (j < bordes.length && p.x0 >= bordes[j]!) j++;
+      franjas[j]!.push(p);
+    }
+    franjas.forEach((f, j) => {
+      if (f.length === 0) return;
+      partes.push({
+        palabras: f,
+        banda: { x0: Math.min(...f.map((p) => p.x0)), x1: Math.max(...f.map((p) => p.x1)) },
+      });
+      void j;
+    });
+    r = k;
+  }
+  if (suelta.length > 0) partes.push({ palabras: suelta });
+  return partes;
+}
+
 /**
  * Los renglones de la foto, columna por columna y de arriba abajo.
  *
@@ -325,12 +503,22 @@ export function lineasDeLaFoto(palabras: PalabraOcr[]): LineaMedida[] {
   const limpias = todas.filter((p) => p.giro === undefined);
   if (limpias.length === 0) return [];
 
-  const { bandas, columna } = repartirEnColumnas(limpias);
+  const reparto = repartirEnColumnas(limpias);
+
+  // Cada columna, con los bloques de viñetas lado a lado partidos en su
+  // propia «columna» (ver `partirPorVinetas`). Sin viñetas, una por columna.
+  const grupos: Array<{ palabras: PalabraOcr[]; banda: { x0: number; x1: number } }> = [];
+  for (let c = 0; c < Math.max(1, reparto.bandas.length); c++) {
+    const banda = reparto.bandas[c] ?? { x0: 0, x1: 0 };
+    const dela = limpias.filter((_, i) => reparto.columna[i] === c);
+    for (const parte of partirPorVinetas(dela)) grupos.push({ palabras: parte.palabras, banda: parte.banda ?? banda });
+  }
+  const bandas = grupos.map((g) => g.banda);
 
   type Renglon = { palabras: PalabraOcr[]; cima: number; pie: number };
   const porColumna: Renglon[][] = [];
-  for (let c = 0; c < Math.max(1, bandas.length); c++) {
-    const dela = limpias.filter((_, i) => columna[i] === c);
+  for (let c = 0; c < grupos.length; c++) {
+    const dela = grupos[c]!.palabras;
     const fichas = dela.filter((p) => esFichaDePrecio(p.texto) || esNeutra(p.texto));
     const texto = dela.filter((p) => !fichas.includes(p));
     const renglones: Renglon[] = agruparEnRenglones(texto).map((r) => ({
@@ -349,7 +537,9 @@ export function lineasDeLaFoto(palabras: PalabraOcr[]): LineaMedida[] {
       let elegido = (nombres.length > 0 ? nombres : solapes).sort((a, b) => b.s - a.s)[0]!;
       // Solapa solo con los ingredientes: si justo encima está el nombre del
       // plato, el precio es suyo («un poco más abajo» de su renglón).
-      if (nombres.length === 0) {
+      // (Solo un precio: un guion o un «&» sueltos son de su renglón —el «-»
+      // de «(6 - 8 porciones)» se iba al nombre del plato de arriba.)
+      if (nombres.length === 0 && esFichaDePrecio(p.texto)) {
         const arriba = renglones[elegido.k - 1];
         const alto = Math.max(1, p.y1 - p.y0);
         if (arriba && formaDeNombre(texto0(arriba))

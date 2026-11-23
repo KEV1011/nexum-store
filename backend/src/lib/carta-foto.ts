@@ -396,6 +396,11 @@ interface RenglonCrudo {
    * entonces las erratas se corrigen como siempre, con el vocabulario.
    */
   dudosas?: string[];
+  /**
+   * El renglón es la CABECERA de tamaños de la carta, armada con sus celdas
+   * (ver `celdasDeTamano`): sus precios valen para los sabores de la página.
+   */
+  cabecera?: { etiquetas: string[]; precios: number[] };
 }
 
 /**
@@ -416,6 +421,118 @@ function todoSuenaASeccion(texto: string): boolean {
   const n = normalizado(texto);
   if (!n) return false;
   return n.split(' ').every((p) => PALABRAS_DE_SECCION.includes(p));
+}
+
+/** «8 PORCIONES», «(6 - 8 porciones)»: cuánto rinde un tamaño. */
+const RE_PORCIONES = /^\(?\s*\d{1,2}\s*(?:(?:-|a)\s*\d{1,2}\s*)?(?:porciones?|pedazos?|personas?|tajadas?)\s*\)?\.?$/i;
+
+/**
+ * La CABECERA de tamaños escrita en celdas, encima de la carta:
+ *
+ *     PEQUEÑA          MEDIANA          GRANDE
+ *     8 PORCIONES      10 PORCIONES     12 PORCIONES
+ *     $25.000          $31.000          $39.000
+ *
+ * Es como imprime sus precios la pizzería de barrio: los sabores van debajo
+ * SIN precio, porque todos cuestan lo mismo en cada tamaño. Sin esto cada
+ * celda salía como una sección («Pequeña», «8 porciones») con un producto
+ * llamado «$25.000», y las pizzas sin precio.
+ *
+ * Cada celda es un tamaño, opcionalmente lo que rinde, y su precio, uno debajo
+ * del otro y al PRINCIPIO de su columna (o del texto). Hacen falta dos celdas
+ * o más: un solo «GRANDE $39.000» puede ser un plato. Las celdas se cambian por
+ * un renglón que lleva los precios para `repartirPreciosDeSeccion`.
+ */
+export function celdasDeTamano<T extends RenglonCrudo>(filas: T[]): T[] {
+  const porColumna = new Map<number | undefined, number[]>();
+  filas.forEach((f, i) => {
+    if (!(f.texto ?? '').trim()) return;
+    const lista = porColumna.get(f.columna) ?? [];
+    lista.push(i);
+    porColumna.set(f.columna, lista);
+  });
+  const limpio = (i: number) => (filas[i]!.texto ?? '').replace(/\s{2,}/g, ' ').trim();
+  const celdas: Array<{ filas: number[]; etiqueta: string; precio: number }> = [];
+  for (const lista of porColumna.values()) {
+    let k = 0;
+    while (k < lista.length) {
+      const tamano = limpio(lista[k]!);
+      if (tamano.split(/\s+/).length !== 1 || !esTokenDeTamano(tamano)) break;
+      let j = k + 1;
+      let rinde = '';
+      if (j < lista.length && RE_PORCIONES.test(limpio(lista[j]!))) {
+        rinde = limpio(lista[j]!).replace(/^\(|\)?\.?$/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+        j++;
+      }
+      if (j >= lista.length || !soloPrecio(limpio(lista[j]!))) break;
+      const etiqueta = tituloDeSeccion(tamano.replace(/[^\p{L}]+$/u, ''));
+      celdas.push({
+        filas: lista.slice(k, j + 1),
+        etiqueta: rinde ? `${etiqueta} (${rinde})` : etiqueta,
+        precio: preciosDeLinea(limpio(lista[j]!))[0]!,
+      });
+      k = j + 1;
+    }
+  }
+  if (celdas.length < 2 || celdas.length > 6) return filas;
+  const quitar = new Set(celdas.flatMap((c) => c.filas));
+  const primera = Math.min(...quitar);
+  const cabecera: RenglonCrudo = {
+    texto: celdas.map((c) => `${c.etiqueta} ${comoPesos(c.precio)}`).join(' / '),
+    cabecera: { etiquetas: celdas.map((c) => c.etiqueta), precios: celdas.map((c) => c.precio) },
+    ...(filas[primera]!.columna !== undefined && { columna: filas[primera]!.columna }),
+  };
+  return filas.flatMap((f, i) => (i === primera ? [cabecera as T] : quitar.has(i) ? [] : [f]));
+}
+
+/**
+ * El NOMBRE partido en dos renglones, con el segundo en minúscula:
+ *
+ *     • Croissant de        • Croissant
+ *       pistachos             red velvet
+ *       $ 16.000              $ 16.000
+ *
+ * Sin unirlos, el precio se le pegaba al segundo renglón y salía un producto
+ * llamado «pistachos», con «Croissant de» suelto y sin precio. Se exige que
+ * los dos sean cortos (cuatro palabras arriba, tres abajo), sin comas, del
+ * mismo tamaño y en la misma columna, que el de arriba no traiga precio y que
+ * el de abajo no tenga forma de lista («frijoles arroz y carne»): así los
+ * ingredientes en minúscula siguen siendo la descripción.
+ */
+export function unirNombresPartidos<T extends RenglonCrudo>(filas: T[]): T[] {
+  const salida: T[] = [];
+  const corto = (t: string) => {
+    const limpio = t.replace(/^[•·●▪◦∙‣\-–—*\s]+/u, '').trim();
+    return limpio !== '' && !/[,;:]/.test(limpio) && limpio.split(/\s+/).length <= 4;
+  };
+  for (const fila of filas) {
+    const texto = (fila.texto ?? '').replace(/\s{2,}/g, ' ').trim();
+    const prev = salida[salida.length - 1];
+    const prevTexto = (prev?.texto ?? '').replace(/\s{2,}/g, ' ').trim();
+    const nombreDeAbajo = nombreDeLinea(texto);
+    if (prev && texto && prevTexto
+      && /^\p{Ll}/u.test(texto)
+      && prev.grande !== true && fila.grande !== true
+      && !prev.cabecera && !fila.cabecera
+      && (prev.columna === undefined || fila.columna === undefined || prev.columna === fila.columna)
+      && preciosDeLinea(prevTexto).length === 0
+      && corto(prevTexto) && corto(nombreDeAbajo)
+      && nombreDeAbajo.split(/\s+/).length <= 3
+      && !/\s(y|con|e)\s/i.test(` ${nombreDeAbajo} `)
+      && !pareceDescripcion(nombreDeAbajo)
+      && !todoSuenaASeccion(prevTexto)
+      && !continuaComoDescripcion(nombreDeAbajo)) {
+      salida[salida.length - 1] = { ...prev, texto: `${prevTexto} ${texto}`, ...juntarDudosas(prev, fila) };
+      continue;
+    }
+    salida.push(fila);
+  }
+  return salida;
+}
+
+/** «con queso», «en salsa»: empieza como lo que trae el plato, no como su nombre. */
+function continuaComoDescripcion(texto: string): boolean {
+  return /^(con|en|y|sin|acompa[nñ]ad[oa]s?|bañad[oa]s?|servid[oa]s?|incluye|trae)\b/i.test(texto.trim());
 }
 
 /**
@@ -533,6 +650,8 @@ function esNombreDeIngredientes(nombre: RenglonCrudo, ingredientes: RenglonCrudo
   if (preciosDeLinea(n).length > 0 || n.includes(',') || n.split(/\s+/).length > 6) return false;
   if (todoSuenaASeccion(n) || (vaEnMayusculas(n) && suenaASeccion(n))) return false;
   if (n.endsWith(':')) return false;
+  // «(6 - 8 porciones)» entre el nombre y el precio: cuánto rinde, no un plato.
+  if (RE_PORCIONES.test(ing)) return true;
   if (pareceDescripcion(n) && !vaEnMayusculas(n)) return false;
   if (hablaDeLaSeccion(ing)) return false;
   return ing.includes(',') || (pareceDescripcion(ing) && ing.length > n.length);
@@ -546,7 +665,7 @@ function esNombreDeIngredientes(nombre: RenglonCrudo, ingredientes: RenglonCrudo
  */
 export function parsearCarta(texto: string): CartaLeida {
   return parsearRenglones(
-    unirPreciosHuerfanos((texto ?? '').split(/\r?\n/).map((t) => ({ texto: t }))),
+    unirPreciosHuerfanos(unirNombresPartidos(celdasDeTamano((texto ?? '').split(/\r?\n/).map((t) => ({ texto: t }))))),
   );
 }
 
@@ -591,7 +710,7 @@ export function parsearCartaMedida(
   altoCuerpo: number,
   esTitulo: (alto: number, cuerpo: number) => boolean,
 ): CartaLeida {
-  return parsearRenglones(unirPreciosHuerfanos(lineas.map((l) => ({
+  return parsearRenglones(unirPreciosHuerfanos(unirNombresPartidos(celdasDeTamano(lineas.map((l) => ({
     texto: l.texto,
     // Sin alto medido se deja `undefined` para que decidan las pistas del
     // texto: un `false` diría «es del tamaño del cuerpo», que no se sabe.
@@ -600,7 +719,7 @@ export function parsearCartaMedida(
     // al último plato de la izquierda.
     ...(l.columna !== undefined && { columna: l.columna }),
     ...(l.dudosas && { dudosas: l.dudosas }),
-  }))));
+  }))))));
 }
 
 function parsearRenglones(filas: RenglonCrudo[]): CartaLeida {
@@ -744,10 +863,16 @@ interface CartaSinRol {
 type FilaSinRol = Omit<LineaCarta, 'rol' | 'motivoRol'> & {
   /** El rol lo decidió el PROPIO renglón («Acompañamientos: papa o arroz»). */
   rolForzado?: { rol: RolCarta; motivo: string };
+  /**
+   * Va justo debajo de un plato CON precio, sin un blanco ni un título en
+   * medio: es una opción de ese plato («PANZEROTTI $17.000 · HAWAIANO ·
+   * MIXTO»), no un sabor de la cabecera de tamaños.
+   */
+  trasPrecio?: boolean;
 };
 
 function parsearSinRol(
-  filas: Array<{ texto: string; grande?: boolean }>,
+  filas: Array<{ texto: string; grande?: boolean; columna?: number; cabecera?: RenglonCrudo['cabecera'] }>,
 ): CartaSinRol {
   const salida: CartaSinRol = { lineas: [], secciones: [], notas: [], ignoradas: [] };
   let seccion = '';
@@ -760,11 +885,43 @@ function parsearSinRol(
   // Los renglones que son el PRECIO DE LA SECCIÓN («BAJOS $8.000 / ALTOS
   // $10.000»). Se leen como siempre y al final se decide si se reparten.
   const bloques: BloqueDeSeccion[] = [];
+  // El plato SIN precio que se acaba de escribir: los ingredientes que trae
+  // debajo son suyos («MARGARITA» · «Salsa, Queso, Orégano.»). Cualquier otro
+  // renglón lo suelta.
+  let sinPrecio: number | null = null;
+  // Ese plato sin precio salió de un renglón GRANDE («Canelones de pollo
+  // stroganoff»): su descripción puede empezar en prosa, sin comas.
+  let deTitulo = false;
+  // Lo de arriba fue un plato con precio y nada lo ha cortado todavía.
+  let trasPrecio = false;
+  let columna: number | undefined;
+  // Lo de justo arriba fue un título de sección.
+  let tituloRecien = false;
 
   for (let i = 0; i < filas.length; i++) {
     const cruda = filas[i]!.texto.replace(/\s{2,}/g, ' ').trim();
-    if (!cruda) { ultimo = null; continue; }
+    const previoSinPrecio: number | null = sinPrecio;
+    const previoDeTitulo: boolean = deTitulo;
+    sinPrecio = null;
+    deTitulo = false;
+    const previoTitulo = tituloRecien;
+    tituloRecien = false;
+    if (!cruda) { ultimo = null; trasPrecio = false; continue; }
+    // Una columna nueva empieza un bloque: lo de su primer renglón no cuelga
+    // del último plato de la columna anterior.
+    if (filas[i]!.columna !== columna) trasPrecio = false;
+    columna = filas[i]!.columna;
     const grande = filas[i]!.grande;
+
+    // LA CABECERA DE TAMAÑOS de la carta (ver `celdasDeTamano`): sus precios
+    // son de los sabores de toda la página, no de una sección.
+    const cabecera = filas[i]!.cabecera;
+    if (cabecera) {
+      bloques.push({ linea: i + 1, seccion, texto: cruda, ...cabecera, deLaPagina: true });
+      ultimo = null;
+      trasPrecio = false;
+      continue;
+    }
 
     const precios = preciosDeLinea(cruda);
     const nombre = nombreDeLinea(cruda);
@@ -803,6 +960,56 @@ function parsearSinRol(
         salida.notas.push({ linea, seccion, texto: indicacion });
         ultimo = { tipo: 'nota', i: salida.notas.length - 1 };
         continue;
+      }
+
+      // 0c'. LA PRESENTACIÓN DE LA SECCIÓN, justo debajo del título y en
+      // prosa que sigue en el renglón de abajo: «Se elaboran desde cero
+      // utilizando / ingredientes 100% naturales…». Es una nota de la
+      // sección, no un plato sin precio.
+      if (previoTitulo && grande !== true && pareceDescripcion(cruda) && !esListaDeIngredientes(cruda)
+        && filas[i + 1] && filas[i + 1]!.grande !== true && continuaAlDeArriba(filas[i + 1]!.texto)) {
+        salida.notas.push({ linea, seccion, texto: cruda });
+        ultimo = { tipo: 'nota', i: salida.notas.length - 1 };
+        continue;
+      }
+
+      // 0c''. A ESCOGER PARA TODA LA SECCIÓN: «Espagueti | Fettuccine» debajo
+      // de «Pasta larga». No son dos platos: el cliente escoge la pasta de
+      // cualquiera de ellos.
+      const aEscoger = previoTitulo && grande !== true ? opcionesConBarra(cruda) : null;
+      if (aEscoger) {
+        for (const opcion of aEscoger) {
+          salida.lineas.push({
+            linea, nombre: opcion, precio: null, seccion,
+            rolForzado: {
+              rol: 'guarnicion',
+              motivo: `La carta da a escoger entre ${aEscoger.map((o) => `«${o}»`).join(' y ')} para los platos de «${seccion}».`,
+            },
+          });
+        }
+        ultimo = null;
+        continue;
+      }
+
+      // 0d. LOS INGREDIENTES DE UN PLATO SIN PRECIO. En la pizzería los
+      // sabores no llevan precio (lo pone la cabecera) y debajo de cada uno
+      // van sus ingredientes; sin esto cada renglón de ingredientes salía como
+      // otro plato sin precio llamado «Salsa, Queso, Orégano».
+      if (previoSinPrecio !== null && grande !== true) {
+        const plato = salida.lineas[previoSinPrecio]!;
+        // Sin coma al final, lo que sigue solo es suyo si cierra la lista: una
+        // o dos palabras con punto («Tocineta.»).
+        const cierra = /\.$/.test(cruda) && cruda.split(/\s+/).length <= 2
+          && preciosDeLinea(cruda).length === 0 && !/\.\s*$/.test(plato.descripcion ?? '');
+        const sigue = plato.descripcion
+          ? /,\s*$/.test(plato.descripcion) || continuaAlDeArriba(cruda) || cierra
+          : esListaDeIngredientes(cruda) || (previoDeTitulo && esProsaDePlato(cruda));
+        if (sigue) {
+          plato.descripcion = unirTexto(plato.descripcion ?? '', cruda.replace(/^[,;\s]+/, '').replace(/^\(|\)$/g, ''));
+          sinPrecio = previoSinPrecio;
+          deTitulo = previoDeTitulo;
+          continue;
+        }
       }
 
       // 1. EL RENGLÓN QUE CONTINÚA AL DE ARRIBA. La carta parte los
@@ -883,18 +1090,68 @@ function parsearSinRol(
       // una sección vacía. Ahí solo cuentan las pistas fuertes.
       const debil = !seccionDeGuarnicion(seccion);
       if (pareceSeccion(nombre, grande, debil)) {
+        // UN SABOR, NO UNA SECCIÓN: un nombre corto gritado (o más grande)
+        // con su lista de ingredientes justo debajo y sin precio. Es la forma
+        // de la pizzería; como sección, cada pizza quedaba vacía y sus
+        // ingredientes como platos sueltos.
+        if (esSaborConIngredientes(nombre, filas[i + 1], grande, filas[i + 2])) {
+          salida.lineas.push({
+            linea, nombre, precio: null, seccion, trasPrecio: false,
+            aviso: 'No le encontramos precio. Escríbelo o borra la fila.',
+          });
+          sinPrecio = salida.lineas.length - 1;
+          deTitulo = true;
+          trasPrecio = false;
+          ultimo = null;
+          continue;
+        }
         tamanosVigentes = null;
-        seccion = tituloDeSeccion(nombre.replace(/\s*:\s*$/, ''));
+        // EL TÍTULO PARTIDO EN RENGLONES: «Pan artesanal» · «& de masa
+        // madre». El segundo empieza en minúscula o con «&»: sigue al de
+        // arriba, que todavía no tiene nada debajo.
+        const sigueAlTitulo = previoTitulo && /^(\p{Ll}|&\s)/u.test(nombre);
+        const titulo = tituloDeSeccion(nombre.replace(/\s*:\s*$/, ''));
+        if (sigueAlTitulo) {
+          const resto = nombre.replace(/\s*:\s*$/, '').trim();
+          const unido = `${seccion} ${resto === resto.toUpperCase() ? resto.toLowerCase() : resto}`;
+          const k = salida.secciones.lastIndexOf(seccion);
+          if (k >= 0 && !salida.lineas.some((l) => l.seccion === seccion) && !salida.notas.some((n) => n.seccion === seccion)) {
+            salida.secciones.splice(k, 1);
+          }
+          seccion = unido;
+        } else {
+          seccion = titulo;
+        }
         if (!salida.secciones.includes(seccion)) salida.secciones.push(seccion);
         ultimo = null;
+        trasPrecio = false;
+        tituloRecien = true;
         continue;
       }
       salida.lineas.push({
         linea, ...separarDescripcion(nombre), precio: null, seccion,
+        ...(trasPrecio && { trasPrecio: true }),
         aviso: 'No le encontramos precio. Escríbelo o borra la fila.',
       });
+      sinPrecio = salida.lineas.length - 1;
       ultimo = null;
       continue;
+    }
+
+    // EL FINAL DE LA DESCRIPCIÓN, CON EL PRECIO DEL PLATO: el precio suelto
+    // de debajo se pegó al último renglón del párrafo («y topping de queso
+    // parmesano. $32.000»). Ese renglón sigue la descripción del plato sin
+    // precio de arriba, y el precio es de ESE plato.
+    if (previoSinPrecio !== null && precios.length === 1 && grande !== true && nombre) {
+      const plato = salida.lineas[previoSinPrecio]!;
+      if (plato.descripcion && (/,\s*$/.test(plato.descripcion) || continuaAlDeArriba(nombre))) {
+        plato.descripcion = unirTexto(plato.descripcion, nombre.replace(/^[,;\s]+/, ''));
+        plato.precio = precios[0]!;
+        delete plato.aviso;
+        ultimo = { tipo: 'plato', i: previoSinPrecio };
+        trasPrecio = true;
+        continue;
+      }
     }
 
     // Puede ser el PRECIO DE LA SECCIÓN. Se lee igual que cualquier fila (si
@@ -930,11 +1187,13 @@ function parsearSinRol(
       });
       // Los ingredientes del renglón de abajo también son de ESTE plato.
       ultimo = { tipo: 'plato', i: salida.lineas.length - 1 };
+      trasPrecio = true;
       continue;
     }
 
     salida.lineas.push({ linea, ...separarDescripcion(nombre), precio: precios[0]!, seccion });
     ultimo = { tipo: 'plato', i: salida.lineas.length - 1 };
+    trasPrecio = true;
   }
 
   repartirPreciosDeSeccion(salida, bloques);
@@ -950,6 +1209,8 @@ interface BloqueDeSeccion {
   /** El nombre de cada precio («Bajo», «Alto»); vacío = vale para todos. */
   etiquetas: string[];
   precios: number[];
+  /** La cabecera de tamaños de la carta: vale para los sabores de TODA la página. */
+  deLaPagina?: boolean;
 }
 
 /** «todos a», «precio único», «c/u»: el precio vale para cualquier plato. */
@@ -1014,12 +1275,45 @@ export function bloqueDePrecios(texto: string): { etiquetas: string[]; precios: 
  * 8.000») solo se reparte si hay al menos dos platos que lo esperan: con uno,
  * lo más probable es que sea un plato que se llama así.
  */
-function repartirPreciosDeSeccion(salida: CartaSinRol, bloques: BloqueDeSeccion[]): void {
-  if (bloques.length === 0) return;
-  const lineasDeBloque = new Set(bloques.map((b) => b.linea));
+function repartirPreciosDeSeccion(salida: CartaSinRol, todosLosBloques: BloqueDeSeccion[]): void {
+  if (todosLosBloques.length === 0) return;
+  const lineasDeBloque = new Set(todosLosBloques.map((b) => b.linea));
   const esObjetivo = (l: FilaSinRol) => l.precio == null && !(l.precios && l.precios.length > 0)
     && !l.rolForzado && !lineasDeBloque.has(l.linea);
   const usados = new Set<number>();
+
+  // LA CABECERA DE TAMAÑOS: sus precios son de los sabores de toda la página
+  // —los platos sin precio que no cuelgan de un plato con precio— y solo si
+  // hay al menos dos que los esperan.
+  const pagina = todosLosBloques.filter((b) => b.deLaPagina);
+  const bloques = todosLosBloques.filter((b) => !b.deLaPagina);
+  for (const b of pagina) {
+    // (Una fila «llamada» como una lista de ingredientes no es un sabor: es un
+    // renglón al que el OCR le perdió el nombre de arriba. No se le inventan
+    // precios.)
+    const metas = salida.lineas.filter((l) => l.linea > b.linea && esObjetivo(l) && !l.trasPrecio
+      && !l.nombre.includes(','));
+    if (metas.length < 2) {
+      salida.ignoradas.push({
+        linea: b.linea,
+        texto: b.texto,
+        motivo: 'Son los precios de cada tamaño, pero no encontramos los platos sin precio a los que van.',
+      });
+      continue;
+    }
+    for (const l of metas) {
+      l.precios = [...b.precios];
+      l.tamanos = [...b.etiquetas];
+      l.aviso = avisoDePrecios(b.precios, l.tamanos);
+    }
+    salida.ignoradas.push({
+      linea: b.linea,
+      texto: b.texto,
+      motivo: 'Son los precios de cada tamaño: se los pusimos a los sabores de la carta.',
+    });
+  }
+  if (pagina.length > 0) salida.ignoradas.sort((a, b) => a.linea - b.linea);
+  if (bloques.length === 0) return;
 
   for (const seccion of [...new Set(bloques.map((b) => b.seccion))]) {
     const suyos = bloques.filter((b) => b.seccion === seccion);
@@ -1103,6 +1397,67 @@ export function indicacionDeLaCarta(texto: string): string | null {
 }
 
 /** «Mango biche - sal - limón», o un renglón que sigue esa lista: «- tajín». */
+/**
+ * ¿El renglón es una lista de ingredientes? «Salsa, Queso, Orégano.»: con
+ * comas, sin precio, sin dos puntos (eso es una lista para escoger) y sin
+ * hablar de toda la sección.
+ */
+function esListaDeIngredientes(texto: string): boolean {
+  const t = texto.trim();
+  if (!t.includes(',') || t.includes(':')) return false;
+  if (preciosDeLinea(t).length > 0) return false;
+  return !hablaDeLaSeccion(t) && !indicacionDeLaCarta(t);
+}
+
+/**
+ * ¿Es la primera línea, en prosa, de la descripción de un plato? «Tubos de
+ * pasta fresca rellena de pechuga». Sin precio, sin dos puntos y sin hablar
+ * de toda la sección.
+ */
+function esProsaDePlato(texto: string): boolean {
+  const t = texto.trim();
+  if (t.includes(':') || preciosDeLinea(t).length > 0) return false;
+  return pareceDescripcion(t) && !hablaDeLaSeccion(t) && !indicacionDeLaCarta(t);
+}
+
+/**
+ * «Espagueti | Fettuccine»: dos a cuatro opciones cortas separadas por una
+ * barra vertical o un punto medio, sin precio. La barra «/» no cuenta: es la
+ * que va dentro de un nombre («Pie limón / maracuyá»).
+ */
+function opcionesConBarra(texto: string): string[] | null {
+  if (!/[|·]/.test(texto) || preciosDeLinea(texto).length > 0) return null;
+  const partes = texto.split(/\s*[|·]\s*/).map((p) => p.trim()).filter(Boolean);
+  if (partes.length < 2 || partes.length > 4) return null;
+  if (!partes.every((p) => /^[\p{L}][\p{L}\s'’-]*$/u.test(p) && p.split(/\s+/).length <= 3)) return null;
+  return partes.map((p) => tituloDeSeccion(p));
+}
+
+/**
+ * ¿«MARGARITA» es un sabor con sus ingredientes debajo, y no una sección? Lo es
+ * si el nombre es corto, no suena a sección («BEBIDAS», «PIZZAS») y el renglón
+ * de justo abajo es una lista de ingredientes que no va más grande.
+ */
+function esSaborConIngredientes(
+  nombre: string,
+  siguiente: { texto: string; grande?: boolean } | undefined,
+  grande?: boolean,
+  despues?: { texto: string; grande?: boolean },
+): boolean {
+  if (!siguiente || siguiente.grande === true) return false;
+  const limpio = nombre.replace(/\s*:\s*$/, '').trim();
+  if (limpio !== nombre.trim() || limpio.split(/\s+/).length > 4) return false;
+  // Una sección se titula en plural («BEBIDAS», «PIZZAS»); un sabor que lleva
+  // una palabra del vocabulario va en singular («VEGETARIANA», «POLLO»).
+  if (suenaASeccion(limpio) && /s$/.test(normalizado(limpio))) return false;
+  const debajo = siguiente.texto.replace(/\s{2,}/g, ' ');
+  // La lista con comas, o la prosa del plato si el nombre va más grande y la
+  // prosa sigue en el renglón de abajo («Tubos de pasta fresca rellena de
+  // pechuga / de pollo, bañados…»).
+  return esListaDeIngredientes(debajo)
+    || (grande === true && esProsaDePlato(debajo) && !!despues && continuaAlDeArriba(despues.texto));
+}
+
 function listaConRayas(texto: string): boolean {
   return /\s[-–—]\s/.test(texto) || /^[-–—]\s*\S/.test(texto.trim());
 }
@@ -1372,9 +1727,17 @@ function conRol(carta: CartaSinRol): CartaLeida {
     secciones: carta.secciones,
     notas: carta.notas,
     ignoradas: carta.ignoradas,
-    lineas: carta.lineas.map(({ rolForzado, ...l }) => {
-      const { rol, motivo } = rolForzado
+    lineas: carta.lineas.map(({ rolForzado, trasPrecio: _tras, ...l }) => {
+      void _tras;
+      let { rol, motivo } = rolForzado
         ?? rolDeLinea({ nombre: l.nombre, seccion: l.seccion, precio: l.precio });
+      // Un nombre que suena a bebida («COLOMBIANA», que es una gaseosa) con su
+      // lista de INGREDIENTES debajo es un plato: la pizza Colombiana.
+      if (!rolForzado && rol === 'acompanamiento' && motivo?.startsWith('Suena')
+        && l.descripcion && esListaDeIngredientes(l.descripcion)) {
+        rol = 'plato';
+        motivo = undefined;
+      }
       // Una guarnición SIN precio no es una fila incompleta: viene incluida.
       // El aviso de «no le encontramos precio» la habría pintado en ámbar y
       // dejado fuera de la creación.
