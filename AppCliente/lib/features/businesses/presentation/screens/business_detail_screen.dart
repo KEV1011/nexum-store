@@ -458,6 +458,8 @@ class _RejillaProductos extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Lo que vende el local entero: dibuja la «Hawaiana» de una pizzería.
+    final especialidad = antojoDelLocal(business);
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: AppConstants.spacingM),
       sliver: SliverList.separated(
@@ -473,6 +475,7 @@ class _RejillaProductos extends StatelessWidget {
           return ProductTile(
             product: product,
             quantity: qty,
+            antojoDelLocal: especialidad,
             onAdd: () async {
               if (!business.isOpen) {
                 ScaffoldMessenger.of(context).showSnackBar(

@@ -118,14 +118,104 @@ void main() {
     });
   });
 
+  group('la pizzería: la sección y el local dicen lo que el nombre no', () {
+    test('un sabor en el nombre no le gana al plato de la sección', () {
+      // Eran los platos que se perdían: «Mexicana» salía en comida mexicana y
+      // «Pollo BBQ» en pollo, siendo pizzas.
+      expect(clave(plato('Mexicana', seccion: 'PIZZAS')), 'pizza');
+      expect(clave(plato('Pollo BBQ', seccion: 'Pizzas')), 'pizza');
+      expect(clave(plato('Pollo y champiñones', seccion: 'PIZZAS')), 'pizza');
+      expect(clave(plato('Hawaiana', seccion: 'Pizzas tradicionales')), 'pizza');
+      expect(clave(plato('Doble carne asada', seccion: 'HAMBURGUESAS')),
+          'hamburguesas');
+    });
+
+    test('pero un plato de verdad en el nombre sigue mandando', () {
+      expect(clave(plato('Perro caliente', seccion: 'HAMBURGUESAS')), 'perros');
+      expect(clave(plato('Tacos al pastor', seccion: 'PIZZAS')), 'mexicana');
+      expect(clave(plato('Alitas BBQ', seccion: 'Combos')), 'pollo');
+    });
+
+    test('sin sección que lo diga, lo dice el nombre del local', () {
+      final pieros = local('Pieros Pizza', [
+        plato('Hawaiana', seccion: 'Especiales'),
+        plato('Napolitana', seccion: 'Tradicionales'),
+        plato('Mexicana', seccion: 'Especiales'),
+        plato('Margarita', seccion: 'Especiales'),
+        plato('Agua sin gas', seccion: 'Bebidas'),
+        plato('Coca-Cola 1.5 L', seccion: 'Especiales'),
+        plato('Papas a la francesa', seccion: 'Especiales'),
+      ]);
+      final delLocal = antojoDelLocal(pieros);
+      expect(delLocal?.clave, 'pizza');
+      expect(platosDelAntojo(pieros, 'pizza').map((p) => p.name),
+          ['Hawaiana', 'Napolitana', 'Mexicana', 'Margarita']);
+      expect(antojosPresentes([pieros]).map((a) => a.clave), ['pizza']);
+    });
+
+    test('o la gran mayoría de sus platos', () {
+      final toscana = local('La Toscana', [
+        plato('Pizza hawaiana'),
+        plato('Pizza pepperoni'),
+        plato('Pizza de la casa'),
+        plato('Pizza vegetariana'),
+        plato('Cuatro estaciones', seccion: 'Especiales'),
+      ]);
+      expect(antojoDelLocal(toscana)?.clave, 'pizza');
+      expect(platosDelAntojo(toscana, 'pizza'), hasLength(5));
+    });
+
+    test('un local mezclado no tiene especialidad', () {
+      expect(
+        antojoDelLocal(local('Betos', [
+          plato('Hamburguesa sencilla'),
+          plato('Perro caliente'),
+          plato('Salchipapa'),
+          plato('Arepa rellena'),
+        ])),
+        isNull,
+      );
+      // Con muy pocos platos no se deduce nada.
+      expect(antojoDelLocal(local('Mi local', [plato('Pizza'), plato('Pizza')])),
+          isNull);
+    });
+
+    test('un ingrediente en el nombre del local no convierte todo en eso', () {
+      // «Pollos Mario» vende pollo, pero también sus jugos y sus postres.
+      expect(antojoDelLocal(local('Pollos Mario', [plato('Limonada')])), isNull);
+      expect(antojoDelLocal(local('La Mexicana', [plato('Limonada')])), isNull);
+      // Y las alitas de una hamburguesería siguen siendo pollo.
+      final burger = local('Burger House', [plato('Alitas BBQ x6')]);
+      expect(platosDelAntojo(burger, 'pollo').map((p) => p.name),
+          ['Alitas BBQ x6']);
+    });
+
+    test('buscar «pizza» encuentra la Hawaiana de una pizzería', () {
+      final pieros = local('Pieros Pizza', [
+        plato('Hawaiana', seccion: 'Especiales'),
+        plato('Agua sin gas', seccion: 'Bebidas'),
+      ]);
+      expect(buscarEnComercio(pieros, 'pizza').platos.map((p) => p.name),
+          ['Hawaiana']);
+    });
+  });
+
   group('qué antojos se enseñan', () {
-    test('solo con al menos DOS locales', () {
+    test('basta UN local para que el antojo salga', () {
+      // Con dos, una ciudad con una sola pizzería nunca veía «Pizza».
       final r = antojosPresentes([
         local('Betos', [plato('Hamburguesa sencilla'), plato('Sushi roll')]),
         local('Piero', [plato('Hamburguesa doble')]),
       ]);
-      expect(r.map((a) => a.clave), ['hamburguesas']);
-      expect(kMinLocalesPorAntojo, 2);
+      expect(r.map((a) => a.clave), ['hamburguesas', 'sushi']);
+      expect(kMinLocalesPorAntojo, 1);
+    });
+
+    test('un antojo que ningún local tiene no sale', () {
+      final r = antojosPresentes([
+        local('Betos', [plato('Gaseosa 400 ml', seccion: 'Bebidas')]),
+      ]);
+      expect(r, isEmpty);
     });
 
     test('un local con diez hamburguesas cuenta como UNO', () {
@@ -133,8 +223,11 @@ void main() {
         local('Betos', [
           for (var i = 0; i < 10; i++) plato('Hamburguesa $i'),
         ]),
+        local('Piero', [plato('Hamburguesa doble'), plato('Pizza hawaiana')]),
       ]);
-      expect(r, isEmpty);
+      // Hamburguesas en DOS locales va antes que pizza en uno, aunque Betos
+      // tenga diez.
+      expect(r.map((a) => a.clave), ['hamburguesas', 'pizza']);
     });
 
     test('del más ofrecido al menos, y en empate el orden del catálogo', () {

@@ -16,6 +16,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
 import 'package:nexum_client/core/utils/currency_formatter.dart';
 import 'package:nexum_client/core/utils/safe_back.dart';
+import 'package:nexum_client/features/businesses/domain/antojos.dart';
 import 'package:nexum_client/features/businesses/domain/entities/business_entity.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/barra_secciones.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/product_options_sheet.dart';
@@ -204,6 +205,8 @@ class _MesaCartaScreenState extends ConsumerState<MesaCartaScreen>
 
   Widget _cuerpo(CartaDeMesa carta) {
     final negocio = carta.negocio;
+    // Lo que vende el local entero: dibuja la «Hawaiana» de una pizzería.
+    final especialidad = antojoDelLocal(negocio);
     final porSeccion = <String, List<ProductEntity>>{};
     for (final p in negocio.products) {
       if (p.suggestAsAddon) continue;
@@ -274,6 +277,7 @@ class _MesaCartaScreenState extends ConsumerState<MesaCartaScreen>
                   padding: const EdgeInsets.only(bottom: AppConstants.spacingS),
                   child: ProductTile(
                     product: p,
+                    antojoDelLocal: especialidad,
                     // Con opciones cada variante es su propia línea: el
                     // contador del tile sumaría platos distintos.
                     quantity: p.hasOptions ? 0 : cantidadDe(_lineas, p.id),

@@ -4,6 +4,7 @@ import 'package:nexum_client/app/theme/adaptive_colors.dart';
 import 'package:nexum_client/app/theme/zipa_tokens.dart';
 import 'package:nexum_client/core/config/api_config.dart';
 import 'package:nexum_client/core/constants/app_constants.dart';
+import 'package:nexum_client/features/businesses/domain/antojos.dart';
 import 'package:nexum_client/features/businesses/domain/iconos_plato.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/nombre_plato.dart';
 import 'package:nexum_client/features/businesses/presentation/widgets/precio_producto.dart';
@@ -17,10 +18,15 @@ class ProductTile extends StatelessWidget {
     required this.quantity,
     required this.onAdd,
     required this.onRemove,
+    this.antojoDelLocal,
     super.key,
   });
 
   final ProductEntity product;
+
+  /// Lo que vende el local entero (`antojoDelLocal`), para dibujar el plato que
+  /// no dice por sí mismo lo que es («Hawaiana» en una pizzería).
+  final Antojo? antojoDelLocal;
   final int quantity;
   final VoidCallback onAdd;
   final VoidCallback onRemove;
@@ -72,7 +78,8 @@ class ProductTile extends StatelessWidget {
                   extraCount: product.images.length,
                 ),
                 const SizedBox(width: AppConstants.spacingM),
-              ] else if (ilustracionDePlato(product) case final ilustracion?) ...[
+              ] else if (ilustracionDePlato(product, delLocal: antojoDelLocal)
+                  case final ilustracion?) ...[
                 _IlustracionPlato(asset: ilustracion),
                 const SizedBox(width: AppConstants.spacingM),
               ],
@@ -140,8 +147,8 @@ bool filaConFoto(ProductEntity p) => (p.imageUrl ?? '').trim().isNotEmpty;
 /// FINO de `iconos_plato.dart` — un dibujo por plato, no el del antojo
 /// grueso, que le ponía un camarón a la mojarra. Lo que se ofrece al pagar
 /// (bebidas sugeridas) no lleva.
-String? ilustracionDePlato(ProductEntity p) =>
-    filaConFoto(p) ? null : iconoDePlato(p);
+String? ilustracionDePlato(ProductEntity p, {Antojo? delLocal}) =>
+    filaConFoto(p) ? null : iconoDePlato(p, delLocal: delLocal);
 
 /// El dibujo del plato en el lugar de la foto. Mismo tamaño que la miniatura
 /// (las filas quedan alineadas con las que sí tienen foto) pero con el render

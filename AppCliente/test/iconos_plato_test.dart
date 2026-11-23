@@ -7,6 +7,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
+import 'package:nexum_client/features/businesses/domain/antojos.dart';
 import 'package:nexum_client/features/businesses/domain/iconos_plato.dart';
 
 ProductEntity plato(String nombre, {String seccion = 'General'}) =>
@@ -72,6 +73,43 @@ void main() {
   test('el nombre manda; la sección solo si el nombre no dice nada', () {
     expect(dibujo('La Bestia', seccion: 'HAMBURGUESAS'), 'hamburguesas');
     expect(dibujo('Gaseosa', seccion: 'HAMBURGUESAS'), 'gaseosa');
+  });
+
+  test('una palabra ambigua la aclara la sección o el local', () {
+    // En un bar, una margarita es un cóctel…
+    expect(dibujo('Margarita'), 'coctel');
+    // …en una pizzería, una pizza.
+    expect(dibujo('Margarita', seccion: 'PIZZAS'), 'pizza');
+    String? enPieros(String nombre, {String seccion = 'Especiales'}) {
+      final p = ProductEntity(
+        id: nombre,
+        name: nombre,
+        description: '',
+        price: 10000,
+        category: seccion,
+      );
+      final pieros = BusinessEntity(
+        id: 'pieros',
+        name: 'Pieros Pizza',
+        category: BusinessCategory.restaurant,
+        rating: null,
+        etaMinutes: 30,
+        deliveryFee: 4000,
+        address: 'Calle 5',
+        products: [p],
+        isOpen: true,
+      );
+      final a = iconoDePlato(p, delLocal: antojoDelLocal(pieros));
+      return a?.split('/').last.replaceAll('.png', '');
+    }
+
+    expect(enPieros('Margarita'), 'pizza');
+    expect(enPieros('Hawaiana'), 'pizza');
+    expect(enPieros('Napolitana', seccion: 'Tradicionales'), 'pizza');
+    expect(enPieros('Mexicana'), 'pizza');
+    // Lo que dice ser otra cosa conserva su dibujo.
+    expect(enPieros('Coca-Cola 1.5 L'), 'gaseosa');
+    expect(enPieros('Agua sin gas', seccion: 'Bebidas'), 'gaseosa');
   });
 
   test('un ingrediente en el nombre no le gana al plato de la sección', () {
