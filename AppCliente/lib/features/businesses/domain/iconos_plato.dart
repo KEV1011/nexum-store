@@ -27,13 +27,21 @@
 //     dibujo inventado es peor que no tener ninguno. Y si el nombre solo
 //     nombra un INGREDIENTE («Cuatro quesos») y la sección nombra un PLATO
 //     («PIZZAS»), manda la sección.
+//  4. Algunas palabras son AMBIGUAS: «Margarita» es un cóctel en un bar y una
+//     pizza en una pizzería. Se tratan como un ingrediente: la sección o el
+//     local las corrigen (ver `antojoDelLocal`).
 
 import 'package:nexum_client/features/businesses/domain/antojos.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
 
 class IconoPlato {
-  const IconoPlato(this.asset, this.palabras, {this.ingrediente = false});
+  const IconoPlato(
+    this.asset,
+    this.palabras, {
+    this.ingrediente = false,
+    this.ambiguas = const [],
+  });
 
   /// Ruta del render (1x; Flutter elige 2.0x/3.0x solo).
   final String asset;
@@ -46,6 +54,9 @@ class IconoPlato {
   /// Importa para la regla 3: «Cuatro quesos» en la sección PIZZAS es una
   /// pizza, no un queso, y «Doble carne» en HAMBURGUESAS es una hamburguesa.
   final bool ingrediente;
+
+  /// De sus [palabras], las que también son el nombre de OTRO plato (regla 4).
+  final List<String> ambiguas;
 }
 
 const _p = 'assets/platos/';
@@ -208,16 +219,17 @@ const List<IconoPlato> kIconosPlato = [
   ]),
   IconoPlato('${_p}coctel.png', [
     'coctel', 'mojito', 'margarita', 'martini', 'pina colada', 'licor',
-  ]),
+  ], ambiguas: ['margarita']),
   IconoPlato('${_p}cerveza.png', ['cerveza', 'pola', 'michelada']),
   IconoPlato('${_p}vino.png', ['vino', 'sangria', 'copa de vino']),
 ];
 
 class _Casa {
-  const _Casa(this.inicio, this.largo, this.orden);
+  const _Casa(this.inicio, this.largo, this.orden, this.frase);
   final int inicio;
   final int largo;
   final int orden;
+  final String frase;
 
   /// Regla 1: antes; regla 2: más larga; luego el orden del catálogo.
   bool mejorQue(_Casa o) => inicio != o.inicio
@@ -240,22 +252,28 @@ final List<RegExp> _patrones = [
     RegExp('(^| )(${_alternancia(i.palabras)})(s|es)?(?= |\$)'),
 ];
 
-/// La entrada del catálogo que nombra un texto ya normalizado, o null.
-IconoPlato? _iconoDeTexto(String normalizado) {
+/// La entrada del catálogo que nombra un texto ya normalizado, y si lo nombra
+/// FLOJO (un ingrediente o una palabra ambigua), o null.
+(IconoPlato, bool)? _iconoDeTexto(String normalizado) {
   if (normalizado.isEmpty) return null;
   _Casa? mejor;
   for (var k = 0; k < kIconosPlato.length; k++) {
     final m = _patrones[k].firstMatch(normalizado);
     if (m == null) continue;
-    final c = _Casa(m.start + m.group(1)!.length, m.group(2)!.length, k);
+    final c = _Casa(m.start + m.group(1)!.length, m.group(2)!.length, k, m.group(2)!);
     if (mejor == null || c.mejorQue(mejor)) mejor = c;
   }
-  return mejor == null ? null : kIconosPlato[mejor.orden];
+  if (mejor == null) return null;
+  final icono = kIconosPlato[mejor.orden];
+  return (icono, icono.ingrediente || icono.ambiguas.contains(mejor.frase));
 }
 
-/// El dibujo de un plato (reglas 1–3), o null. No mira la foto: eso lo
+/// El dibujo de un plato (reglas 1–4), o null. No mira la foto: eso lo
 /// decide quien lo pinta, porque la foto real siempre manda.
-String? iconoDePlato(ProductEntity p) {
+///
+/// `delLocal` es lo que vende el local entero (`antojoDelLocal`): en «Pieros
+/// Pizza», una «Hawaiana» en la sección ESPECIALES lleva la pizza.
+String? iconoDePlato(ProductEntity p, {Antojo? delLocal}) {
   if (p.suggestAsAddon) return null;
   final porNombre = _iconoDeTexto(normalizarTexto(p.name));
   final porSeccion = _iconoDeTexto(normalizarTexto(p.category));
@@ -263,11 +281,20 @@ String? iconoDePlato(ProductEntity p) {
   // PIZZAS, «Pollo con champiñones» es una pizza. Al revés sí manda el
   // nombre: una «Gaseosa» en la sección HAMBURGUESAS (los combos) es una
   // gaseosa.
-  final elegido = porNombre != null &&
-          porNombre.ingrediente &&
-          porSeccion != null &&
-          !porSeccion.ingrediente
-      ? porSeccion
-      : porNombre ?? porSeccion;
-  return elegido?.asset ?? antojoDeProducto(p)?.ilustracion;
+  if (porNombre != null && porNombre.$2 && porSeccion != null && !porSeccion.$2) {
+    return porSeccion.$1.asset;
+  }
+  // Una palabra AMBIGUA sin sección que la aclare la aclara el local: la
+  // «Margarita» de una pizzería. Un ingrediente no: unas alitas siguen siendo
+  // pollo aunque las venda una hamburguesería.
+  if (porNombre != null &&
+      porSeccion == null &&
+      delLocal != null &&
+      porNombre.$1.ambiguas.isNotEmpty &&
+      !porNombre.$1.ingrediente &&
+      porNombre.$2) {
+    return delLocal.ilustracion;
+  }
+  final elegido = porNombre ?? porSeccion;
+  return elegido?.$1.asset ?? antojoDeProducto(p, delLocal: delLocal)?.ilustracion;
 }

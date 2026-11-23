@@ -18,9 +18,13 @@
 // 3. Lo que el local ofrece al pagar (`suggestAsAddon`: la gaseosa, las papas)
 //    no clasifica al local: una malteada de acompañamiento no convierte una
 //    hamburguesería en heladería.
-// 4. Un antojo se enseña solo si lo tienen al menos DOS locales. Con uno no es
-//    una categoría, es un local; y un antojo sin ninguno lleva a una lista
+// 4. Un antojo se enseña en cuanto UN local lo tenga (ver
+//    [kMinLocalesPorAntojo]). Uno sin ninguno nunca sale: llevaría a una lista
 //    vacía, que se lee como app rota.
+// 5. Un nombre que solo dice el SABOR («Mexicana», «Pollo BBQ») no le gana a
+//    una sección que dice el PLATO («PIZZAS»): en una pizzería, «Mexicana» es
+//    una pizza. Y si ni la sección lo dice («ESPECIALES»), lo dice el LOCAL:
+//    en «Pieros Pizza», la «Hawaiana» es una pizza (ver [antojoDelLocal]).
 
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
@@ -32,6 +36,8 @@ class Antojo {
     required this.nombre,
     required this.palabras,
     this.soloComoPlato = false,
+    this.ingrediente = false,
+    this.estilos = const [],
   });
 
   /// Identificador estable: también es el nombre de su ilustración.
@@ -49,6 +55,16 @@ class Antojo {
   /// «Ajiaco con pollo» o «Sopa de pollo» no lo son — ahí el pollo va dentro
   /// de otra cosa, y quien tiene antojo de pollo asado no los busca.
   final bool soloComoPlato;
+
+  /// Es más un INGREDIENTE que una forma de plato (el pollo, la carne, el
+  /// camarón): en el nombre de un plato de la sección PIZZAS o HAMBURGUESAS,
+  /// dice de qué es, no qué es (regla 5).
+  final bool ingrediente;
+
+  /// De sus [palabras], las que solo describen un SABOR o un estilo
+  /// («mexicana», «china»). Un taco es mexicano siempre; una pizza
+  /// «Mexicana» no es comida mexicana.
+  final List<String> estilos;
 
   /// La ilustración 3D (Fluent Emoji, MIT). Ver
   /// `tools/procesar-ilustraciones-3d.py --antojo`.
@@ -77,7 +93,7 @@ const List<Antojo> kAntojos = [
   Antojo(clave: 'mexicana', nombre: 'Mexicana', palabras: [
     'taco', 'burrito', 'quesadilla', 'nacho', 'fajita', 'mexicana',
     'mexicano', 'enchilada',
-  ]),
+  ], estilos: ['mexicana', 'mexicano']),
   Antojo(clave: 'arepas', nombre: 'Arepas', palabras: ['arepa']),
   Antojo(clave: 'empanadas', nombre: 'Empanadas', palabras: ['empanada']),
   Antojo(clave: 'sandwiches', nombre: 'Sándwiches', palabras: [
@@ -93,11 +109,11 @@ const List<Antojo> kAntojos = [
   Antojo(clave: 'oriental', nombre: 'Oriental', palabras: [
     'arroz chino', 'arroz oriental', 'chop suey', 'wok', 'ramen', 'lumpia',
     'chaufa', 'yakimeshi', 'oriental', 'china', 'chino', 'thai', 'teriyaki',
-  ]),
+  ], estilos: ['oriental', 'china', 'chino', 'thai', 'teriyaki']),
   Antojo(clave: 'mariscos', nombre: 'Mariscos', palabras: [
     'marisco', 'camaron', 'ceviche', 'pescado', 'mojarra', 'trucha',
     'langostino', 'salmon', 'tilapia', 'robalo', 'bagre', 'cazuela',
-  ]),
+  ], ingrediente: true),
   Antojo(clave: 'desayunos', nombre: 'Desayunos', palabras: [
     'desayuno', 'calentado', 'changua', 'omelette', 'omelet', 'perico',
     'huevos revueltos', 'huevos rancheros', 'huevos al gusto', 'tamal',
@@ -109,6 +125,7 @@ const List<Antojo> kAntojos = [
     clave: 'pollo',
     nombre: 'Pollo',
     soloComoPlato: true,
+    ingrediente: true,
     palabras: [
       'pollo', 'alita', 'broaster', 'nugget', 'pechuga', 'apanado',
     ],
@@ -117,7 +134,7 @@ const List<Antojo> kAntojos = [
     'churrasco', 'punta de anca', 'costilla', 'bbq', 'parrilla', 'lomo',
     'carne asada', 'asado', 'picada', 'chorizo', 'solomito', 'baby beef',
     'sobrebarriga', 'morcilla', 'parrillada',
-  ]),
+  ], ingrediente: true, estilos: ['bbq']),
   Antojo(clave: 'almuerzos', nombre: 'Almuerzos', palabras: [
     'almuerzo', 'corrientazo', 'ejecutivo', 'menu del dia', 'plato del dia',
     'arroz con pollo',
@@ -143,7 +160,13 @@ const List<Antojo> kAntojos = [
 ];
 
 /// Cuántos locales tienen que ofrecer un antojo para que se enseñe (regla 4).
-const int kMinLocalesPorAntojo = 2;
+///
+/// Era DOS («con uno no es una categoría, es un local»), y en una ciudad que
+/// empieza con pocos comercios eso escondía justo lo que el cliente buscaba:
+/// con una sola pizzería, «Pizza» no salía nunca y parecía que la app no
+/// reconocía las pizzas. Con uno la puerta lleva a ese local con sus pizzas,
+/// que es una respuesta, no una lista vacía.
+const int kMinLocalesPorAntojo = 1;
 
 /// Texto comparable: minúscula, sin tildes, solo letras y números separados
 /// por un espacio. «Hamburguésa  DOBLE!» → «hamburguesa doble».
@@ -186,52 +209,138 @@ bool _nombraElPlato(String normalizado, Match m) {
   return !_enlacesDeIngrediente.contains(previa);
 }
 
+/// Lo que un texto dice de un antojo, y si lo dice FLOJO: solo por un
+/// ingrediente o un sabor (regla 5).
+class _Casa {
+  const _Casa(this.antojo, {required this.flojo, required this.soloEstilo});
+  final Antojo antojo;
+
+  /// Ingrediente o sabor: dice de qué es el plato, no qué es.
+  final bool flojo;
+
+  /// Casó SOLO por una palabra de sabor («Mexicana»). Esa la puede corregir
+  /// también el local (regla 5); un ingrediente como el pollo no, porque unas
+  /// «Alitas» en una hamburguesería siguen siendo pollo.
+  final bool soloEstilo;
+}
+
 /// El antojo de un texto ya normalizado, o null.
-Antojo? _antojoDeTexto(String normalizado) {
+_Casa? _casaDeTexto(String normalizado) {
   if (normalizado.isEmpty) return null;
   for (final a in kAntojos) {
     final patron = _patrones[a.clave]!;
-    if (!a.soloComoPlato) {
-      if (patron.hasMatch(normalizado)) return a;
-      continue;
-    }
-    if (patron.allMatches(normalizado).any((m) => _nombraElPlato(normalizado, m))) {
-      return a;
-    }
+    final casadas = patron
+        .allMatches(normalizado)
+        .where((m) => !a.soloComoPlato || _nombraElPlato(normalizado, m))
+        .map((m) => m.group(2)!)
+        .toList();
+    if (casadas.isEmpty) continue;
+    final soloEstilo = casadas.every(a.estilos.contains);
+    return _Casa(a, flojo: a.ingrediente || soloEstilo, soloEstilo: soloEstilo);
   }
   return null;
 }
+
+Antojo? _antojoDeTexto(String normalizado) => _casaDeTexto(normalizado)?.antojo;
 
 /// Un combo o una promoción no dice en su nombre qué es («Combo 1»): lo dice
 /// lo que trae («Hamburguesa sencilla + papas + gaseosa»).
 final RegExp _esCombo =
     RegExp(r'(^| )(combo|combos|promo|promocion|oferta|paquete)( |$)');
 
-/// El antojo de un plato (reglas 1, 2 y 3). Null si no es de ninguno.
-Antojo? antojoDeProducto(ProductEntity p) {
+/// Lo que NO es un plato aunque lo venda una pizzería: la bebida, el agua, la
+/// salsa aparte. Sin esto, en «Pieros Pizza» el «Agua sin gas» de la sección
+/// BEBIDAS acabaría en el antojo de pizza (regla 5).
+final RegExp _noEsPlato = RegExp(
+  r'(^| )(bebida|gaseosa|agua|jugo|limonada|naranjada|cerveza|soda|refresco|'
+  r'coca|cola|pepsi|postobon|sprite|malta|te|vino|licor|michelada|bebidas|'
+  r'adicion|adicional|adiciones|extra|extras|salsa|salsas|porcion|domicilio|'
+  r'empaque|desechable|papa|papas|papitas|francesa)(s|es)?( |$)',
+);
+
+/// El antojo de un plato (reglas 1, 2, 3 y 5). Null si no es de ninguno.
+///
+/// `delLocal` es el antojo del local entero ([antojoDelLocal]): solo se usa
+/// cuando el plato no dice por sí mismo lo que es, o lo dice solo con un sabor.
+Antojo? antojoDeProducto(ProductEntity p, {Antojo? delLocal}) {
   if (p.suggestAsAddon) return null;
   final nombre = normalizarTexto(p.name);
-  return _antojoDeTexto(nombre) ??
-      _antojoDeTexto(normalizarTexto(p.category)) ??
-      (_esCombo.hasMatch(nombre)
-          ? _antojoDeTexto(normalizarTexto(p.description))
-          : null);
+  final seccion = normalizarTexto(p.category);
+  final porNombre = _casaDeTexto(nombre);
+  final porSeccion = _casaDeTexto(seccion);
+  if (porNombre != null) {
+    // Regla 5: «Mexicana» o «Pollo BBQ» en la sección PIZZAS es una pizza.
+    if (porNombre.flojo && porSeccion != null && !porSeccion.flojo) {
+      return porSeccion.antojo;
+    }
+    if (porNombre.soloEstilo && porSeccion == null && delLocal != null) {
+      return delLocal;
+    }
+    return porNombre.antojo;
+  }
+  if (porSeccion != null) return porSeccion.antojo;
+  if (_esCombo.hasMatch(nombre)) {
+    final porLoQueTrae = _antojoDeTexto(normalizarTexto(p.description));
+    if (porLoQueTrae != null) return porLoQueTrae;
+  }
+  if (delLocal != null &&
+      !_noEsPlato.hasMatch(nombre) &&
+      !_noEsPlato.hasMatch(seccion)) {
+    return delLocal;
+  }
+  return null;
+}
+
+/// Cuántos platos tiene que tener reconocidos un local, y qué parte tiene que
+/// ser de un mismo antojo, para darlo por «especialista» sin que su nombre lo
+/// diga.
+const int kMinPlatosParaEspecialidad = 3;
+const double kParteParaEspecialidad = 0.6;
+
+/// Lo que el local ENTERO vende, o null: el contexto de la regla 5.
+///
+/// Primero su NOMBRE («Pieros Pizza», «Burger House»); si no lo dice, sus
+/// propios platos, cuando la gran mayoría de los que se reconocen son de un
+/// mismo antojo. Solo cuentan las FORMAS de plato (pizza, hamburguesa,
+/// sushi…): un local que se llama «Pollos Mario» o «La Mexicana» no convierte
+/// en pollo o en tacos todo lo que vende.
+Antojo? antojoDelLocal(BusinessEntity b) {
+  final porNombre = _casaDeTexto(normalizarTexto(b.name));
+  if (porNombre != null && !porNombre.flojo) return porNombre.antojo;
+  final cuenta = <String, int>{};
+  var reconocidos = 0;
+  for (final p in b.products) {
+    final a = antojoDeProducto(p);
+    if (a == null) continue;
+    reconocidos++;
+    if (a.ingrediente || a.estilos.isNotEmpty) continue;
+    cuenta[a.clave] = (cuenta[a.clave] ?? 0) + 1;
+  }
+  if (reconocidos < kMinPlatosParaEspecialidad || cuenta.isEmpty) return null;
+  final mayor = cuenta.entries.reduce((x, y) => y.value > x.value ? y : x);
+  if (mayor.value < kMinPlatosParaEspecialidad) return null;
+  if (mayor.value / reconocidos < kParteParaEspecialidad) return null;
+  return kAntojos.firstWhere((a) => a.clave == mayor.key);
 }
 
 /// Los platos de un local que son de ese antojo.
-List<ProductEntity> platosDelAntojo(BusinessEntity b, String clave) => [
-      for (final p in b.products)
-        if (antojoDeProducto(p)?.clave == clave) p,
-    ];
+List<ProductEntity> platosDelAntojo(BusinessEntity b, String clave) {
+  final delLocal = antojoDelLocal(b);
+  return [
+    for (final p in b.products)
+      if (antojoDeProducto(p, delLocal: delLocal)?.clave == clave) p,
+  ];
+}
 
 /// Los antojos que se enseñan en la home, del más ofrecido al menos (empate:
 /// el orden del catálogo, para que no bailen entre aperturas).
 List<Antojo> antojosPresentes(List<BusinessEntity> comercios) {
   final locales = <String, int>{};
   for (final b in comercios) {
+    final especialidad = antojoDelLocal(b);
     final delLocal = <String>{
       for (final p in b.products)
-        if (antojoDeProducto(p) case final a?) a.clave,
+        if (antojoDeProducto(p, delLocal: especialidad) case final a?) a.clave,
     };
     for (final c in delLocal) {
       locales[c] = (locales[c] ?? 0) + 1;
@@ -370,12 +479,14 @@ CoincidenciaBusqueda buscarEnComercio(BusinessEntity b, String consulta) {
   }
   final buscadas = q.split(' ');
   final antojoBuscado = _antojoDeConsulta(q);
+  final especialidad = antojoBuscado == null ? null : antojoDelLocal(b);
   final conPuesto = <(int, int, ProductEntity)>[];
   var orden = 0;
   for (final p in b.products) {
     if (p.suggestAsAddon) continue;
     final esDelAntojo =
-        antojoBuscado != null && antojoDeProducto(p)?.clave == antojoBuscado.clave;
+        antojoBuscado != null &&
+        antojoDeProducto(p, delLocal: especialidad)?.clave == antojoBuscado.clave;
     final porNombre = _casaConsulta(buscadas, normalizarTexto(p.name));
     final porLoDemas = _casaConsulta(buscadas, normalizarTexto(p.category)) ||
         _casaConsulta(buscadas, normalizarTexto(p.description));
