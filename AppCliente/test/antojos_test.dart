@@ -17,6 +17,7 @@ ProductEntity plato(
   String descripcion = '',
   double precio = 10000,
   bool alPagar = false,
+  bool pareceAcompanamiento = true,
 }) =>
     ProductEntity(
       id: '$nombre-$seccion',
@@ -25,6 +26,7 @@ ProductEntity plato(
       price: precio,
       category: seccion,
       suggestAsAddon: alPagar,
+      pareceAcompanamiento: pareceAcompanamiento,
     );
 
 BusinessEntity local(
@@ -177,6 +179,59 @@ void main() {
           antojoDeProducto(plato('Focaccina', seccion: 'Entradas'),
               delLocal: delLocal),
           isNull);
+    });
+
+    test('una pizza marcada «al pagar» sigue siendo una pizza', () {
+      // Producción (Pieros, Hierbabuena): las pizzas enteras estaban marcadas
+      // «se ofrece al pagar». El servidor dice que NO suenan a acompañamiento
+      // (`pareceAcompanamiento: false`), así que siguen siendo pizzas; la
+      // gaseosa marcada igual, que sí suena, sigue fuera.
+      final pieros = local('Pieros Pizza', [
+        plato('Hawaiana', seccion: 'Pizza', alPagar: true,
+            pareceAcompanamiento: false),
+        plato('Cuatro quesos', seccion: 'Pizzas especiales', alPagar: true,
+            pareceAcompanamiento: false),
+        plato('Napolitana', seccion: 'Pizza Tradicionales'),
+        plato('Coca-Cola 1.5 L', seccion: 'Bebidas', alPagar: true),
+      ]);
+      expect(platosDelAntojo(pieros, 'pizza').map((p) => p.name),
+          ['Hawaiana', 'Cuatro quesos', 'Napolitana']);
+      expect(antojosPresentes([pieros]).map((a) => a.clave), ['pizza']);
+      // Un servidor anterior no manda el dato: se confía en la marca.
+      expect(clave(plato('Hawaiana', seccion: 'Pizza', alPagar: true)), isNull);
+      // El servidor no cuenta los ADICIONALES como acompañamiento: lo dice la
+      // sección (BETO, «Porciones adicionales») o el nombre («Papas fritas»).
+      expect(
+          clave(plato('Chorizo', seccion: 'Porciones adicionales',
+              alPagar: true, pareceAcompanamiento: false)),
+          isNull);
+      expect(
+          clave(plato('Papas fritas', seccion: 'Antes del sushi',
+              alPagar: true, pareceAcompanamiento: false)),
+          isNull);
+    });
+
+    test('una sección con nombre propio no hereda la especialidad', () {
+      // Lo que se veía en «Pieros Pizza → Mostrando pizza»: el «Especial» de
+      // PANNE COOK, los panzerottis, la milanesa y la lasaña, con el dibujo
+      // de la pizza.
+      final pieros = local('Pieros Pizza', [
+        plato('Hawaiana', seccion: 'Pizza'),
+        plato('Especial', seccion: 'Panne Cook'),
+        plato('Hawaiano', seccion: 'Piccola Italia Panzerotti'),
+        plato('Milanesa a la Napolitana', seccion: 'Carnes'),
+        plato('Bolonesa con Pollo y Jamón', seccion: 'Lasagna'),
+        plato('Margarita', seccion: 'Especiales'),
+        plato('Carnes', seccion: 'Mini pequeña mediana grande'),
+      ]);
+      expect(platosDelAntojo(pieros, 'pizza').map((p) => p.name),
+          ['Hawaiana', 'Margarita', 'Carnes']);
+      expect(
+          antojoDeProducto(
+                  plato('Bolonesa con Pollo y Jamón', seccion: 'Lasagna'),
+                  delLocal: antojoDelLocal(pieros))
+              ?.clave,
+          'pastas');
     });
 
     test('o la gran mayoría de sus platos', () {

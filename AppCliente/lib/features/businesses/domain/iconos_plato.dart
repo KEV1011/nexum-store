@@ -117,8 +117,8 @@ const List<IconoPlato> kIconosPlato = [
     'menu del dia', 'plato del dia', 'plato tipico',
   ]),
   IconoPlato('${_a}pastas.png', [
-    'pasta', 'espagueti', 'spaghetti', 'lasana', 'fettuccine', 'fetuccini',
-    'raviol', 'ravioli', 'macarron', 'canelon',
+    'pasta', 'espagueti', 'spaghetti', 'lasana', 'lasagna', 'fettuccine',
+    'fetuccini', 'raviol', 'ravioli', 'macarron', 'canelon',
   ]),
   IconoPlato('${_a}ensaladas.png', [
     'ensalada', 'ensalada cesar', 'insalata', 'insalate',
@@ -279,7 +279,7 @@ final List<RegExp> _patrones = [
 /// `delLocal` es lo que vende el local entero (`antojoDelLocal`): en «Pieros
 /// Pizza», una «Hawaiana» en la sección ESPECIALES lleva la pizza.
 String? iconoDePlato(ProductEntity p, {Antojo? delLocal}) {
-  if (p.suggestAsAddon) return null;
+  if (esParaAcompanar(p)) return null;
   final porNombre = _iconoDeTexto(normalizarTexto(p.name));
   final porSeccion = _iconoDeTexto(normalizarTexto(p.category));
   // Un INGREDIENTE en el nombre no le gana a un PLATO en la sección: en

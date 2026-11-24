@@ -232,6 +232,7 @@ class ProductEntity {
     this.images = const [],
     this.optionGroups = const [],
     this.suggestAsAddon = false,
+    this.pareceAcompanamiento = true,
   });
 
   final String id;
@@ -293,6 +294,15 @@ class ProductEntity {
   /// descuenta existencias y cuenta en el reporte de ventas del local. Lo
   /// único distinto es que se le propone al cliente antes de cerrar.
   final bool suggestAsAddon;
+
+  /// El SERVIDOR dice que suena a bebida o acompañamiento (por su nombre o
+  /// por su sección). Es la misma regla con la que el portal le avisa al
+  /// dueño de lo que marcó «se ofrece al pagar» sin que lo parezca.
+  ///
+  /// Sin el dato (servidor anterior) vale `true`: se confía en la marca, como
+  /// siempre se hizo. Lo usa `esParaAcompanar` (antojos.dart).
+  final bool pareceAcompanamiento;
+
 
   bool get precioDesde => optionGroups.any(
         (g) => g.required && g.options.any((o) => o.priceDelta > 0),
