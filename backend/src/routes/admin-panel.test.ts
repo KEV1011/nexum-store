@@ -1029,3 +1029,167 @@ describe('el panel pintando el botón de pánico', () => {
     expect(el['alerts-body']!.innerHTML).not.toContain('#fef2f2');
   });
 });
+
+/**
+ * Lo que se añadió al panel para poder ACTUAR: la lista de servicios colgados,
+ * borrar cuentas, vehículos y negocios, y las tablas que caben en un celular.
+ * Se ejecuta el JS del panel: leer el fuente no basta, ahí `\\'` es correcto.
+ */
+describe('el panel actuando sobre lo que muestra', () => {
+  interface ElementoFalso { style: { display: string }; innerHTML: string; value: string; textContent: string }
+  const almacen = () => ({ getItem: () => null, setItem: () => {}, removeItem: () => {} });
+  const esperar = () => new Promise((r) => setImmediate(r));
+
+  function montar(respuestas: Record<string, unknown>, ids: string[]) {
+    const el: Record<string, ElementoFalso> = {};
+    for (const id of ids) el[id] = { style: { display: '' }, innerHTML: '', value: '', textContent: '' };
+    const documentoFalso = {
+      getElementById: (id: string) => el[id] ?? null,
+      querySelectorAll: () => [] as unknown[],
+      createElement: () => ({ className: '', appendChild: () => {} }),
+    };
+    const fetchFalso = (path: string) => {
+      const clave = Object.keys(respuestas).find((k) => path.startsWith(k));
+      return Promise.resolve({
+        ok: clave !== undefined,
+        status: clave !== undefined ? 200 : 404,
+        json: () => Promise.resolve(
+          clave !== undefined
+            ? { success: true, data: respuestas[clave] }
+            : { success: false, error: 'ruta no simulada: ' + path },
+        ),
+      });
+    };
+    const crear = new Function(
+      'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
+      `${PANEL_JS}\n; return { verAtascados, loadDrivers, loadBusinesses, buscarClientes, verVehiculos, etiquetarTablas, minutosLegibles };`,
+    ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
+    const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
+    return { fn, el, documentoFalso };
+  }
+
+  it('la lista de atascados pinta lo que el servidor manda (no «Ya no queda ninguno»)', async () => {
+    // EL DEFECTO: api() ya devuelve el arreglo y la lista leía r.data, así que
+    // el aviso decía «12 servicios sin conductor» y la lista, que ninguno.
+    const { fn, el } = montar({
+      '/admin/stuck': [{
+        tipo: 'mandado', id: 'e1', ref: 'MD-1', cliente: 'Ana', telefono: '+573001112233',
+        minutos: 1500, detalle: 'Acetaminofén',
+      }],
+    }, ['atascados-lista']);
+    fn['verAtascados']!();
+    await esperar();
+    const html = el['atascados-lista']!.innerHTML;
+    expect(html).not.toContain('Ya no queda ninguno');
+    expect(html).toContain('Ana');
+    expect(html).toContain("cancelarAtascado('mandado','e1')");
+    expect(html).toContain('1 día 1 h');
+  });
+
+  it('dice el tiempo de espera en palabras', () => {
+    const { fn } = montar({}, []);
+    const t = fn['minutosLegibles'] as (m: number) => string;
+    expect(t(45)).toBe('45 min');
+    expect(t(125)).toBe('2 h 5 min');
+    expect(t(1500)).toBe('1 día 1 h');
+  });
+
+  it('cada conductor tiene «Vehículos» y «Eliminar», y un apóstrofo no rompe el botón', async () => {
+    const conductor = {
+      id: 'd1', name: "Asadero D'Luis", phone: '+573001112233', status: 'ONLINE',
+      isVerified: true, intercityEnabled: true, totalTrips: 0, vehicle: null, rating: null,
+      lastSeenAt: null, kycStatus: 'PENDING', hasSelfie: false, selfieUrl: null,
+      backgroundStatus: 'UNCHECKED', fraudFlags: 0, complianceStatus: 'CLEAR',
+      blockedReason: null, citySlug: null, noShows: 0, noShowsSinSenal: 0, motivoBloqueo: null,
+    };
+    const { fn, el } = montar({ '/admin/drivers': [conductor] }, ['drivers-body']);
+    fn['loadDrivers']!();
+    await esperar();
+    const html = el['drivers-body']!.innerHTML;
+    expect(html).toContain("eliminarConductor('d1', this.dataset.nombre)");
+    expect(html).toContain("verVehiculos('d1', this.dataset.nombre)");
+    // El nombre va escapado en el atributo y NUNCA dentro del JS del onclick:
+    // ahí `&#39;` se vuelve comilla antes de ejecutarse y cierra la cadena.
+    expect(html).toContain('data-nombre="Asadero D&#39;Luis"');
+    expect(html).not.toMatch(/onclick="[^"]*D&#39;Luis/);
+  });
+
+  it('un negocio sin pedidos se puede eliminar; uno con pedidos no ofrece el botón', async () => {
+    const base = {
+      ownerName: 'D', category: 'RESTAURANT', address: 'Calle 5', phone: '+57300', isOpen: true,
+      acceptingOrders: true, products: 1, portalPath: '/negocio/t', claimed: true,
+      unpaidSince: null, createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    const { fn, el } = montar({
+      '/admin/businesses': [
+        { ...base, id: 'b1', name: 'Vacío', orders: 0 },
+        { ...base, id: 'b2', name: 'Con ventas', orders: 30 },
+      ],
+    }, ['businesses-body', 'biz-q']);
+    fn['loadBusinesses']!();
+    await esperar();
+    const html = el['businesses-body']!.innerHTML;
+    expect(html).toContain("eliminarNegocio('b1', this.dataset.nombre)");
+    expect(html).not.toContain("eliminarNegocio('b2'");
+  });
+
+  it('buscar clientes encuentra a cualquiera y ofrece eliminar', async () => {
+    const { fn, el } = montar({
+      '/admin/clients/buscar': [{ id: 'u1', name: 'Ana', phone: '+57300', email: null, createdAt: '2026-01-01T00:00:00.000Z', viajes: 3 }],
+    }, ['cli-q', 'clientes-buscados', 'clientes-buscados-body']);
+    fn['buscarClientes']!();
+    await esperar();
+    const html = el['clientes-buscados-body']!.innerHTML;
+    expect(el['clientes-buscados']!.style.display).toBe('block');
+    expect(html).toContain('Ana');
+    expect(html).toContain("eliminarCliente('u1', this.dataset.nombre)");
+  });
+
+  it('un vehículo con viajes se DESACTIVA (el botón lo dice); uno sin viajes se elimina', async () => {
+    const v = { type: 'TAXI', brand: 'Kia', model: 'Rio', color: 'Blanco', year: 2021, isActive: true };
+    const { fn, el } = montar({
+      '/admin/drivers/d1/vehicles': [
+        { ...v, id: 'v1', plate: 'AAA111', viajes: 0 },
+        { ...v, id: 'v2', plate: 'BBB222', viajes: 7 },
+      ],
+    }, ['vehiculos-panel', 'vehiculos-titulo', 'vehiculos-body']);
+    fn['verVehiculos']!('d1', 'Nelson');
+    await esperar();
+    const html = el['vehiculos-body']!.innerHTML;
+    expect(html).toMatch(/eliminarVehiculo\('v1', this\.dataset\.nombre\)">Eliminar/);
+    expect(html).toMatch(/eliminarVehiculo\('v2', this\.dataset\.nombre\)">Desactivar/);
+  });
+
+  it('las tablas se envuelven y cada celda lleva su encabezado (modo tarjeta en el celular)', () => {
+    const { fn } = montar({}, []);
+    const clases = () => {
+      const set = new Set<string>();
+      return { add: (c: string) => set.add(c), contains: (c: string) => set.has(c), set };
+    };
+    const celda = (tag: string, texto: string, colSpan = 1) => {
+      const attrs: Record<string, string> = {};
+      return {
+        tagName: tag, textContent: texto, colSpan, classList: clases(),
+        getAttribute: (k: string) => attrs[k] ?? null,
+        setAttribute: (k: string, v: string) => { attrs[k] = v; },
+        attrs,
+      };
+    };
+    const cab = { children: [celda('TH', 'Nombre'), celda('TH', 'Teléfono'), celda('TH', 'Acciones')], classList: clases() };
+    const fila = { children: [celda('TD', 'Ana'), celda('TD', '+57300'), celda('TD', 'botones')], classList: clases() };
+    const vacia = { children: [celda('TD', 'Sin datos', 3)], classList: clases() };
+    const insertados: unknown[] = [];
+    const padre = { classList: clases(), insertBefore: (n: unknown) => insertados.push(n) };
+    const tabla = { parentNode: padre, querySelectorAll: () => [cab, fila, vacia] };
+    const raiz = { querySelectorAll: () => [tabla] };
+    fn['etiquetarTablas']!(raiz);
+    expect(insertados.length).toBe(1); // envuelta en .tabla
+    expect(cab.classList.set.has('cabecera')).toBe(true);
+    expect(fila.children[0]!.attrs['data-label']).toBe('Nombre');
+    expect(fila.children[1]!.attrs['data-label']).toBe('Teléfono');
+    // Las acciones van a lo ancho y sin rótulo; la fila vacía no se toca.
+    expect(fila.children[2]!.classList.set.has('acciones')).toBe(true);
+    expect(fila.children[2]!.attrs['data-label']).toBeUndefined();
+    expect(vacia.children[0]!.attrs['data-label']).toBeUndefined();
+  });
+});

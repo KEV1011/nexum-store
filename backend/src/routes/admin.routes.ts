@@ -84,6 +84,15 @@ import { listMunicipalities, setMunicipalityCommission } from '../services/munic
 import { metricasACsv } from '../lib/piloto-csv';
 
 import { restablecerClavesPorTelefono } from '../services/clave-personal.service';
+import {
+  BorradoAdminError,
+  buscarClientesAdmin,
+  eliminarClienteAdmin,
+  eliminarConductorAdmin,
+  eliminarNegocioAdmin,
+  eliminarVehiculoAdmin,
+  listarVehiculosDeConductor,
+} from '../services/admin-borrado.service';
 const router = Router();
 
 // ─── Auth del panel (OTP → JWT de admin) ─────────────────────────────────────
@@ -610,6 +619,60 @@ router.get('/clients', async (_req: Request, res: Response): Promise<void> => {
   }
 });
 
+// ─── Borrar desde el panel ───────────────────────────────────────────────────
+// Las cuentas se borran por el MISMO camino que «Eliminar mi cuenta» (se
+// anonimiza y se conserva lo liquidado); lo que tiene historial se desactiva
+// en vez de arrancarse. Ver admin-borrado.service.ts.
+function responderBorrado(res: Response, err: unknown): void {
+  if (err instanceof BorradoAdminError) {
+    res.status(err.status).json({ success: false, error: err.message });
+    return;
+  }
+  res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+}
+
+// GET /admin/clients/buscar?q= — cualquier cliente, no solo los de KYC.
+router.get('/clients/buscar', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await buscarClientesAdmin(String(req.query['q'] ?? '')) });
+  } catch (err) { responderBorrado(res, err); }
+});
+
+// POST /admin/clients/:id/delete
+router.post('/clients/:id/delete', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await eliminarClienteAdmin(req.params['id']!) });
+  } catch (err) { responderBorrado(res, err); }
+});
+
+// POST /admin/drivers/:id/delete
+router.post('/drivers/:id/delete', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await eliminarConductorAdmin(req.params['id']!) });
+  } catch (err) { responderBorrado(res, err); }
+});
+
+// GET /admin/drivers/:id/vehicles
+router.get('/drivers/:id/vehicles', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await listarVehiculosDeConductor(req.params['id']!) });
+  } catch (err) { responderBorrado(res, err); }
+});
+
+// POST /admin/vehicles/:id/delete — sin historial se borra; con historial se desactiva.
+router.post('/vehicles/:id/delete', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await eliminarVehiculoAdmin(req.params['id']!) });
+  } catch (err) { responderBorrado(res, err); }
+});
+
+// POST /admin/businesses/:id/delete — solo un negocio sin pedidos ni plata.
+router.post('/businesses/:id/delete', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await eliminarNegocioAdmin(req.params['id']!) });
+  } catch (err) { responderBorrado(res, err); }
+});
+
 // POST /admin/clients/:id/kyc { status } — decisión manual de identidad del cliente.
 router.post('/clients/:id/kyc', async (req: Request, res: Response): Promise<void> => {
   const { status } = req.body as { status?: string };
@@ -1009,48 +1072,119 @@ const PANEL_HTML = `<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ZIPA — Panel de Operación</title>
   <style>
+    /* Un solo sistema: slate de base y esmeralda como único acento, igual que
+       el portal de empresas. Las tablas pasan a TARJETAS en el celular (ver
+       etiquetarTablas al final del script): con 15 columnas, una tabla de
+       escritorio en un teléfono es una tira que nadie puede leer. */
+    :root {
+      --fondo: #f1f5f9; --superficie: #fff; --borde: #e2e8f0; --borde-fuerte: #cbd5e1;
+      --texto: #0f172a; --suave: #64748b; --marca: #059669; --marca-oscura: #047857;
+      --marca-tenue: #ecfdf5; --peligro: #dc2626; --radio: 12px;
+      --sombra: 0 1px 2px rgba(15,23,42,.06), 0 1px 8px rgba(15,23,42,.05);
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f1f5f9; color: #0f172a; }
-    header { background: #0f172a; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 12px; border-bottom: 3px solid #059669; }
-    header h1 { font-size: 1.1rem; flex: 1; }
-    header button { width: auto; background: rgba(255,255,255,.12); padding: 6px 14px; font-size: .8rem; }
-    .card { max-width: 360px; margin: 60px auto; background: #fff; padding: 32px; border-radius: 14px; box-shadow: 0 2px 14px rgba(15,23,42,.12); border-top: 4px solid #059669; }
-    .card h2 { margin-bottom: 18px; font-size: 1rem; color: #0f172a; }
-    input, select { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; padding: 10px 12px; font-size: .9rem; margin-bottom: 12px; background:#fff; }
-    input:focus, select:focus { outline: 2px solid #05966955; border-color: #059669; }
-    button { width: 100%; background: #059669; color: #fff; border: none; border-radius: 8px; padding: 11px; font-size: .92rem; cursor: pointer; font-weight: 600; }
+    html { -webkit-text-size-adjust: 100%; }
+    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--fondo); color: var(--texto); line-height: 1.45; }
+    header { position: sticky; top: 0; z-index: 30; background: #0f172a; color: #fff; padding: 12px 20px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; border-bottom: 3px solid var(--marca); }
+    header h1 { font-size: 1.05rem; flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    header h1 svg { flex: 0 0 auto; }
+    header select { width: auto; max-width: 220px; margin: 0; padding: 7px 10px; font-size: .85rem; }
+    header button { width: auto; background: rgba(255,255,255,.12); padding: 7px 14px; font-size: .8rem; }
+    .card { max-width: 380px; margin: 60px auto; background: var(--superficie); padding: 32px; border-radius: 16px; box-shadow: 0 2px 14px rgba(15,23,42,.12); border-top: 4px solid var(--marca); }
+    .card h2 { margin-bottom: 18px; font-size: 1rem; text-align: center; }
+    /* 16 px en los campos: con menos, Safari en iPhone acerca la página entera
+       al tocar uno y el panel queda descolocado. */
+    input, select, textarea { width: 100%; border: 1px solid var(--borde-fuerte); border-radius: 10px; padding: 10px 12px; font-size: 16px; margin-bottom: 12px; background: #fff; color: var(--texto); font-family: inherit; }
+    input:focus, select:focus, textarea:focus { outline: 2px solid #05966955; border-color: var(--marca); }
+    button { width: 100%; background: var(--marca); color: #fff; border: none; border-radius: 10px; padding: 11px; font-size: .92rem; cursor: pointer; font-weight: 600; font-family: inherit; }
     button:hover { filter: brightness(1.08); }
-    #app { display: none; padding: 20px; max-width: 1200px; margin: 0 auto; }
-    nav.tabs { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
-    nav.tabs button { width: auto; padding: 8px 18px; background: #fff; color: #047857; border: 1px solid #cbd5e1; font-size: .85rem; border-radius: 20px; }
-    nav.tabs button.active { background: #059669; color: #fff; border-color: #059669; }
-    table { width: 100%; background: #fff; border-radius: 10px; border-collapse: collapse; box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden; }
-    th { background: #ecfdf5; color: #047857; padding: 11px 13px; text-align: left; font-size: .76rem; text-transform: uppercase; }
-    td { padding: 9px 13px; border-top: 1px solid #f0f0f0; font-size: .87rem; vertical-align: middle; }
-    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: .73rem; font-weight: 600; }
-    .badge-PENDING { background: #fff8e1; color: #f57f17; }
-    .badge-APPROVED, .badge-ONLINE, .badge-ok { background: #e8f5e9; color: #2e7d32; }
-    .badge-REJECTED, .badge-PANIC { background: #fce4ec; color: #c62828; }
-    .badge-OFFLINE { background: #eceff1; color: #607d8b; }
+    button:disabled { opacity: .55; cursor: default; }
+    #app { display: none; }
+    #app > div { padding: 16px 20px 40px; max-width: 1240px; margin: 0 auto; }
+    nav.tabs { display: flex; gap: 6px; margin: 0 -20px 18px; padding: 10px 20px; overflow-x: auto; scrollbar-width: none; position: sticky; top: var(--alto-cab, 59px); z-index: 20; background: var(--fondo); }
+    nav.tabs::-webkit-scrollbar { display: none; }
+    nav.tabs button { width: auto; flex: 0 0 auto; padding: 8px 16px; background: var(--superficie); color: var(--marca-oscura); border: 1px solid var(--borde-fuerte); font-size: .85rem; border-radius: 999px; white-space: nowrap; }
+    nav.tabs button.active { background: var(--marca); color: #fff; border-color: var(--marca); }
+    section h3 { font-size: 1rem; margin: 24px 0 8px; }
+    .tabla { overflow-x: auto; border-radius: var(--radio); box-shadow: var(--sombra); background: var(--superficie); margin-bottom: 4px; }
+    table { width: 100%; background: var(--superficie); border-radius: var(--radio); border-collapse: collapse; }
+    .tabla table { box-shadow: none; }
+    th { background: var(--marca-tenue); color: var(--marca-oscura); padding: 11px 13px; text-align: left; font-size: .72rem; text-transform: uppercase; letter-spacing: .02em; white-space: nowrap; }
+    td { padding: 10px 13px; border-top: 1px solid #f1f5f9; font-size: .87rem; vertical-align: middle; }
+    tr:hover td { background: #fafcff; }
+    td .btn-sm, td a.btn-sm { margin: 2px 4px 2px 0; }
+    /* Con ocho botones en una columna estrecha cada fila medía 220 px de alto:
+       mejor que la tabla se desplace de lado dentro de su caja. */
+    td.acciones { min-width: 300px; }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: .72rem; font-weight: 600; white-space: nowrap; }
+    .badge-PENDING { background: #fff8e1; color: #b45309; }
+    .badge-APPROVED, .badge-ONLINE, .badge-ok, .badge-approve { background: #e8f5e9; color: #2e7d32; }
+    .badge-REJECTED, .badge-PANIC, .badge-reject { background: #fce4ec; color: #c62828; }
+    .badge-OFFLINE { background: #eceff1; color: #546e7a; }
     .badge-ON_TRIP { background: #d1fae5; color: #047857; }
-    .badge-REQUESTED { background: #fff8e1; color: #f57f17; }
+    .badge-REQUESTED { background: #fff8e1; color: #b45309; }
     .badge-PROCESSING { background: #d1fae5; color: #047857; }
     .badge-PAID { background: #e8f5e9; color: #2e7d32; }
-    .btn-sm { width:auto; padding: 5px 12px; border-radius: 6px; font-size: .78rem; margin-right: 4px; }
+    .btn-sm { display: inline-block; width: auto; padding: 6px 12px; border-radius: 8px; font-size: .78rem; margin-right: 4px; line-height: 1.3; }
     .btn-approve { background: #2e7d32; }
     .btn-reject { background: #c62828; }
-    a { color: #047857; }
-    #msg { padding: 10px 16px; border-radius: 8px; margin-bottom: 14px; display: none; }
-    #msg.ok { background: #e8f5e9; color: #2e7d32; }
-    #msg.err { background: #fce4ec; color: #c62828; }
-    .empty { padding: 36px; text-align: center; color: #888; }
+    .btn-borrar { background: #fff; color: var(--peligro); border: 1px solid #fecaca; }
+    .btn-borrar:hover { background: #fef2f2; filter: none; }
+    .btn-gris { background: #f1f5f9; color: #334155; }
+    a { color: var(--marca-oscura); }
+    .muted { color: var(--suave); }
+    /* El mensaje flota abajo: arriba se perdía cuando se actuaba sobre una
+       fila al final de una tabla larga, y parecía que el botón no hacía nada. */
+    #msg { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 50; max-width: min(560px, calc(100vw - 32px)); padding: 12px 18px; border-radius: 12px; display: none; box-shadow: 0 8px 24px rgba(15,23,42,.18); font-size: .9rem; }
+    #msg.ok { background: #065f46; color: #fff; }
+    #msg.err { background: #991b1b; color: #fff; }
+    .empty { padding: 36px; text-align: center; color: #94a3b8; }
     .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 18px; }
-    .metric { background: #fff; border-radius: 10px; padding: 16px; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
-    .metric .v { font-size: 1.5rem; font-weight: 700; color: #059669; }
-    .metric .l { font-size: .75rem; color: #777; margin-top: 4px; }
-    form.inline { background:#fff; padding:16px; border-radius:10px; margin-bottom:16px; box-shadow: 0 1px 6px rgba(0,0,0,.08); display:grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px; align-items:end; }
-    form.inline label { font-size:.72rem; color:#666; display:block; margin-bottom:4px; }
-    form.inline input, form.inline select { margin-bottom:0; }
+    .metric { background: var(--superficie); border-radius: var(--radio); padding: 16px; box-shadow: var(--sombra); border: 1px solid var(--borde); }
+    .metric .v { font-size: 1.5rem; font-weight: 700; color: var(--marca); }
+    .metric .l { font-size: .76rem; color: var(--suave); margin-top: 4px; }
+    form.inline, .inline { background: var(--superficie); padding: 16px; border-radius: var(--radio); margin-bottom: 16px; box-shadow: var(--sombra); display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; align-items: end; }
+    form.inline label, .inline label { font-size: .72rem; color: var(--suave); display: block; margin-bottom: 4px; }
+    form.inline input, form.inline select, .inline select { margin-bottom: 0; }
+    .panel { margin-top: 18px; padding: 16px; background: #fafbfd; border: 1px solid var(--borde); border-radius: var(--radio); }
+    .panel-cab { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 10px; }
+    /* Avisos sobre fondo CLARO: los cajones café y vino oscuros se leían como
+       un fallo del panel, no como una alerta. */
+    .aviso { display: none; margin-bottom: 16px; padding: 14px 16px; border-radius: var(--radio); font-size: .87rem; line-height: 1.5; border: 1px solid; }
+    .aviso-ambar { background: #fffbeb; border-color: #fcd34d; color: #78350f; }
+    .aviso-rojo { background: #fef2f2; border-color: #fca5a5; color: #7f1d1d; }
+    .aviso .btn-sm { margin-top: 2px; }
+    .aviso table { margin-top: 10px; }
+    @media (max-width: 720px) {
+      header { padding: 10px 14px; gap: 8px; flex-wrap: nowrap; }
+      header h1 { font-size: .95rem; }
+      header h1 .resto { display: none; }
+      header select { max-width: 132px; padding: 7px 8px; }
+      header button { padding: 7px 10px; }
+      #app > div { padding: 12px 14px 90px; }
+      nav.tabs { margin: 0 -14px 14px; padding: 8px 14px; }
+      .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .metric { padding: 12px; }
+      .metric .v { font-size: 1.2rem; }
+      .card { margin: 24px 16px; padding: 24px; }
+      /* Tabla → tarjetas. Cada celda lleva su encabezado delante (data-label,
+         lo pone etiquetarTablas), así una fila de 15 columnas se lee de arriba
+         abajo en vez de exigir desplazarse de lado. */
+      .tabla { overflow: visible; box-shadow: none; background: transparent; }
+      .tabla table, .tabla tbody, .tabla tr, .tabla td { display: block; width: 100%; }
+      .tabla table { background: transparent; }
+      .tabla thead, .tabla tr.cabecera { display: none; }
+      .tabla tr { background: var(--superficie); border: 1px solid var(--borde); border-radius: var(--radio); margin-bottom: 10px; padding: 6px 12px; box-shadow: var(--sombra); }
+      .tabla tr:hover td { background: transparent; }
+      /* Bloque con el rótulo FLOTANDO a la izquierda (no flex): una celda con
+         dos piezas —«Kia Picanto» y «Amarillo · 2020»— se partía en columnas. */
+      .tabla td { border: 0; padding: 8px 0; text-align: right; overflow: hidden; overflow-wrap: anywhere; }
+      .tabla td + td { border-top: 1px solid #f1f5f9; }
+      .tabla td[data-label]::before { content: attr(data-label); float: left; max-width: 46%; margin-right: 12px; text-align: left; font-size: .72rem; font-weight: 600; color: var(--suave); text-transform: uppercase; line-height: 1.9; }
+      .tabla td.acciones, .tabla td:not([data-label]) { display: block; text-align: left; min-width: 0; }
+      .tabla td.empty { text-align: center; }
+      .aviso table td { color: var(--texto); }
+    }
   </style>
 </head>
 <body>
@@ -1083,12 +1217,11 @@ const PANEL_HTML = `<!DOCTYPE html>
 
 <div id="app">
   <header>
-    <span style="font-size:1.4rem">🛡️</span>
-    <h1>ZIPA — Panel de Operación</h1>
+    <h1><svg width="26" height="26" viewBox="0 0 64 64" aria-hidden="true"><g stroke-width="9" stroke-linecap="round" fill="none"><path d="M17 20 H47" stroke="#10b981"/><path d="M45 22 L19 42" stroke="#34d399"/><path d="M17 44 H47" stroke="#6ee7b7"/></g></svg><span>Panel<span class="resto"> de operación</span></span></h1>
     <select id="plaza" style="width:auto;margin-right:8px" onchange="cambiarPlaza()" title="Plaza"></select>
     <button onclick="logout()" style="width:auto">Salir</button>
   </header>
-  <div style="padding:18px 0">
+  <div>
     <div id="msg"></div>
     <nav class="tabs">
       <button data-tab="metrics" class="active" onclick="show('metrics')">Métricas</button>
@@ -1105,8 +1238,8 @@ const PANEL_HTML = `<!DOCTYPE html>
     </nav>
 
     <section id="tab-metrics">
-      <div id="stuck-warn" style="display:none;margin-bottom:16px;padding:14px 16px;border:1px solid #78350f;background:#451a03;border-radius:10px;color:#fed7aa;font-size:.85rem;line-height:1.5"></div>
-      <div id="pilot-warn" style="display:none;margin-bottom:16px;padding:14px 16px;border:1px solid #7f1d1d;background:#450a0a;border-radius:10px;color:#fecaca;font-size:.85rem;line-height:1.5"></div>
+      <div id="stuck-warn" class="aviso aviso-ambar"></div>
+      <div id="pilot-warn" class="aviso aviso-rojo"></div>
       <div class="grid" id="metrics-grid"><div class="empty">Cargando…</div></div>
 
       <h3 style="margin:22px 0 4px">El piloto en tres cifras</h3>
@@ -1168,10 +1301,28 @@ const PANEL_HTML = `<!DOCTYPE html>
       <p style="font-size:.72rem;color:#64748b;margin:-8px 0 14px">Borra la clave de toda cuenta con ese teléfono (conductor, empresa, negocio). Úsalo cuando alguien la olvidó o denuncia que otra persona entró primero y se la puso. Al volver a entrar, la app le pide crear una nueva.</p>
       <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Vehículo</th><th>¿Puede trabajar?</th><th>Estado</th><th>Verificado</th><th>Intercity</th><th>KYC</th><th>Docs</th><th>Fraude</th><th>Rating</th><th>Viajes</th><th title="Reservas que apartó y no cumplió">Incumple</th><th>Última conexión</th><th>Acciones</th></tr></thead>
       <tbody id="drivers-body"><tr><td colspan="14" class="empty">Cargando…</td></tr></tbody></table>
+      <div id="vehiculos-panel" class="panel" style="display:none">
+        <div class="panel-cab">
+          <strong id="vehiculos-titulo">Vehículos</strong>
+          <button class="btn-sm btn-gris" onclick="document.getElementById('vehiculos-panel').style.display='none'">Cerrar</button>
+        </div>
+        <p class="muted" style="font-size:.78rem;margin-bottom:10px">Un vehículo sin viajes se borra. Con historial se desactiva: deja de usarse para despachar y los viajes viejos siguen diciendo en qué carro fueron.</p>
+        <table><thead><tr><th>Vehículo</th><th>Placa</th><th>Tipo</th><th>Viajes</th><th>Estado</th><th>Acciones</th></tr></thead>
+        <tbody id="vehiculos-body"></tbody></table>
+      </div>
     </section>
 
     <section id="tab-clients" style="display:none">
-      <p style="font-size:.78rem;color:#64748b;margin-bottom:10px">Verificación de identidad de pasajeros (anti-robo). Aprueba tras revisar la selfie.</p>
+      <form class="inline" onsubmit="buscarClientes(event)">
+        <div><label>Buscar cliente por nombre, teléfono o correo</label><input id="cli-q" placeholder="Ej: Ana, 3001112233…" /></div>
+        <div><button type="submit" style="width:auto">Buscar</button></div>
+      </form>
+      <div id="clientes-buscados" style="display:none;margin-bottom:18px">
+        <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Correo</th><th>Viajes</th><th>Registrado</th><th>Acciones</th></tr></thead>
+        <tbody id="clientes-buscados-body"></tbody></table>
+      </div>
+      <h3 style="margin-top:6px">Verificación de identidad</h3>
+      <p style="font-size:.78rem;color:#64748b;margin-bottom:10px">Pasajeros que iniciaron la verificación (anti-robo). Aprueba tras revisar la selfie.</p>
       <table><thead><tr><th>Nombre</th><th>Teléfono</th><th>Selfie</th><th>Estado KYC</th><th>Registrado</th><th>Acciones</th></tr></thead>
       <tbody id="clients-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
     </section>
@@ -1449,6 +1600,7 @@ function logout() {
 function boot() {
   document.getElementById('login').style.display = 'none';
   document.getElementById('app').style.display = 'block';
+  setTimeout(medirCabecera, 0);
   // El alcance se pregunta al servidor en cada arranque, no se guarda: si a
   // alguien le cambian la ciudad, su panel lo refleja al recargar.
   api('/admin/me')
@@ -1701,7 +1853,7 @@ function pintarAtascados(m) {
   // solo; lo que queda es un viaje abierto que solo un humano puede resolver,
   // porque cerrarlo paga y cancelarlo niega un servicio quizá prestado.
   const huerfanos = h.total
-    ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.15)">' +
+    ? '<div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.1)">' +
       '<strong>🚧 ' + esc(String(h.total)) + ' viaje' + (h.total === 1 ? '' : 's') +
       ' en curso sin noticias del conductor</strong> desde hace más de ' +
       esc(String(h.desdeMin)) + ' minutos. Los conductores ya se liberaron para ' +
@@ -1739,9 +1891,15 @@ function verAtascados() {
   const caja = document.getElementById('atascados-lista');
   caja.innerHTML = '<p class="muted" style="margin-top:8px">Cargando…</p>';
   api('/admin/stuck').then(function (r) {
-    const filas = (r && r.data) || [];
+    // api() ya devuelve el arreglo (j.data). Leer r.data aquí daba SIEMPRE una
+    // lista vacía: el aviso decía «12 servicios sin conductor» y la lista
+    // contestaba «Ya no queda ninguno», con los doce esperando.
+    const filas = Array.isArray(r) ? r : [];
     if (!filas.length) {
       caja.innerHTML = '<p class="muted" style="margin-top:8px">Ya no queda ninguno.</p>';
+      // El conteo de arriba es de hace un rato: se refresca para que el aviso
+      // no siga diciendo que hay servicios cuando la lista dice que no.
+      loadMetrics();
       return;
     }
     caja.innerHTML = '<table style="margin-top:8px"><tr><th>Tipo</th><th>Ref</th>' +
@@ -1749,11 +1907,23 @@ function verAtascados() {
       filas.map(function (f) {
         return '<tr><td>' + esc(f.tipo) + '</td><td>' + esc(f.ref) + '</td><td>' +
           esc(f.cliente) + '<br><span class="muted">' + esc(f.telefono) + '</span></td><td>' +
-          esc(f.detalle) + '</td><td>' + esc(String(f.minutos)) + ' min</td>' +
+          esc(f.detalle) + '</td><td>' + esc(minutosLegibles(f.minutos)) + '</td>' +
           '<td><button class="btn-sm" style="background:#dc2626;color:#fff" ' +
           'onclick="cancelarAtascado(\\'' + f.tipo + '\\',\\'' + f.id + '\\')">Cancelar</button></td></tr>';
       }).join('') + '</table>';
+  }).catch(function (e) {
+    caja.innerHTML = '<p style="margin-top:8px;color:#b91c1c">No se pudo cargar la lista: ' + esc(e.message) + '</p>';
   });
+}
+
+// 1.500 minutos no dice nada a nadie; «1 día 1 h» sí.
+function minutosLegibles(m) {
+  m = Math.max(0, Math.round(Number(m) || 0));
+  if (m < 60) return m + ' min';
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + ' h ' + (m % 60) + ' min';
+  const d = Math.floor(h / 24);
+  return d + ' día' + (d === 1 ? '' : 's') + ' ' + (h % 24) + ' h';
 }
 
 function cancelarAtascado(tipo, id) {
@@ -1776,14 +1946,14 @@ function pintarPiloto(m) {
   if (!p.active && !p.expired) { box.style.display = 'none'; return; }
   box.style.display = 'block';
   if (p.expired) {
-    box.style.borderColor = '#78350f'; box.style.background = '#451a03'; box.style.color = '#fed7aa';
+    box.className = 'aviso aviso-ambar';
     box.innerHTML = '<strong>El piloto sin verificación venció</strong> el ' +
       esc(String(p.until || '').slice(0, 10)) + '. La verificación vuelve a exigirse: los ' +
       'conductores sin documentos aprobados ya no reciben servicios. Apruébalos en la ' +
       'pestaña Verificaciones o quita PILOT_SKIP_VERIFICATION en Render.';
     return;
   }
-  box.style.borderColor = '#7f1d1d'; box.style.background = '#450a0a'; box.style.color = '#fecaca';
+  box.className = 'aviso aviso-rojo';
   box.innerHTML = '<strong>⚠ Piloto sin verificación ACTIVO</strong> — caduca el ' +
     esc(String(p.until || '').slice(0, 10)) +
     (typeof p.daysLeft === 'number' ? ' (en ' + p.daysLeft + ' día' + (p.daysLeft === 1 ? '' : 's') + ')' : '') +
@@ -1914,6 +2084,8 @@ function loadDrivers() {
       ' <button class="btn-sm" style="background:#0f766e;color:#fff" onclick="pushPrueba(\\'' + d.id + '\\')" title="Manda un aviso real a su teléfono">🔔</button>' +
       (d.complianceStatus === 'BLOCKED' ? ' <button class="btn-sm" style="background:#0ea5e9;color:#fff" onclick="clearCompliance(\\'' + d.id + '\\')">Desbloquear docs</button>' : '') +
       (d.status === 'ON_TRIP' ? ' <button class="btn-sm" style="background:#f59e0b;color:#fff" onclick="releaseDriver(\\'' + d.id + '\\')">Liberar</button>' : '') +
+      ' <button class="btn-sm btn-gris" data-nombre="' + esc(d.name) + '" onclick="verVehiculos(\\'' + d.id + '\\', this.dataset.nombre)">Vehículos</button>' +
+      ' <button class="btn-sm btn-borrar" data-nombre="' + esc(d.name) + '" onclick="eliminarConductor(\\'' + d.id + '\\', this.dataset.nombre)">Eliminar</button>' +
       '</td></tr>';
     }).join('');
   }).catch((e) => showMsg(e.message, true));
@@ -1954,6 +2126,7 @@ function loadClients() {
       var btns = '';
       if (c.kycStatus !== 'VERIFIED') btns += '<button class="btn-sm btn-approve" onclick="setClientKyc(\\'' + c.id + '\\', \\'VERIFIED\\')">Verificar</button> ';
       if (c.kycStatus !== 'REJECTED') btns += '<button class="btn-sm btn-reject" onclick="setClientKyc(\\'' + c.id + '\\', \\'REJECTED\\')">Rechazar</button>';
+      btns += ' <button class="btn-sm btn-borrar" data-nombre="' + esc(c.name || c.phone || '') + '" onclick="eliminarCliente(\\'' + c.id + '\\', this.dataset.nombre)">Eliminar</button>';
       return '<tr><td><strong>' + esc(c.name || '—') + '</strong></td><td>' + esc(c.phone) + '</td><td>' + selfie +
         '</td><td>' + (KYC_LABEL[c.kycStatus] || c.kycStatus) + '</td><td>' + when(c.createdAt) + '</td><td>' + btns + '</td></tr>';
     }).join('');
@@ -1964,6 +2137,88 @@ function setClientKyc(id, status) {
     .then(() => { showMsg('Verificación del cliente actualizada.', false); loadClients(); })
     .catch((e) => showMsg(e.message, true));
 }
+// ── Borrar ──────────────────────────────────────────────────────────────────
+// Se pide escribir ELIMINAR porque no hay vuelta atrás, y un confirm() se
+// acepta con un toque distraído.
+function confirmarBorrado(que, nombre, consecuencia) {
+  if (typeof prompt !== 'function') return false;
+  const r = prompt('Vas a eliminar ' + que + ' «' + nombre + '». ' + consecuencia +
+    '\\n\\nEscribe ELIMINAR para confirmar.');
+  return (r || '').trim().toUpperCase() === 'ELIMINAR';
+}
+function eliminarConductor(id, nombre) {
+  if (!confirmarBorrado('la cuenta del conductor', nombre,
+    'Se borran sus datos personales y documentos; sus viajes ya liquidados se conservan sin su nombre. ' +
+    'Si tiene un servicio en curso no se podrá.')) return;
+  api('/admin/drivers/' + id + '/delete', { method: 'POST' })
+    .then(() => { showMsg('Cuenta del conductor eliminada.', false); loadDrivers(); })
+    .catch((e) => showMsg(e.message, true));
+}
+function eliminarCliente(id, nombre) {
+  if (!confirmarBorrado('la cuenta del cliente', nombre,
+    'Se borran sus datos personales; sus viajes y pedidos ya cobrados se conservan sin su nombre. ' +
+    'Si tiene un servicio en curso no se podrá.')) return;
+  api('/admin/clients/' + id + '/delete', { method: 'POST' })
+    .then(() => {
+      showMsg('Cuenta del cliente eliminada.', false);
+      loadClients();
+      if (document.getElementById('clientes-buscados').style.display !== 'none') buscarClientes();
+    })
+    .catch((e) => showMsg(e.message, true));
+}
+function eliminarNegocio(id, nombre) {
+  if (!confirmarBorrado('el negocio', nombre, 'Se borran su ficha, su carta y su portal.')) return;
+  api('/admin/businesses/' + id + '/delete', { method: 'POST' })
+    .then((r) => { showMsg('Negocio eliminado (' + r.productos + ' producto(s)).', false); loadBusinesses(); })
+    .catch((e) => showMsg(e.message, true));
+}
+function buscarClientes(ev) {
+  if (ev && ev.preventDefault) ev.preventDefault();
+  const q = (document.getElementById('cli-q') || {}).value || '';
+  const caja = document.getElementById('clientes-buscados');
+  const tb = document.getElementById('clientes-buscados-body');
+  caja.style.display = 'block';
+  tb.innerHTML = '<tr><td colspan="6" class="empty">Buscando…</td></tr>';
+  api('/admin/clients/buscar?q=' + encodeURIComponent(q)).then((rows) => {
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Ningún cliente coincide.</td></tr>'; return; }
+    tb.innerHTML = rows.map((c) => '<tr><td><strong>' + esc(c.name || 'Sin nombre') + '</strong></td><td>' +
+      esc(c.phone || '—') + '</td><td>' + esc(c.email || '—') + '</td><td>' + c.viajes + '</td><td>' +
+      when(c.createdAt) + '</td><td><button class="btn-sm btn-borrar" data-nombre="' + esc(c.name || c.phone || '') +
+      '" onclick="eliminarCliente(\\'' + c.id + '\\', this.dataset.nombre)">Eliminar</button></td></tr>').join('');
+  }).catch((e) => { tb.innerHTML = ''; showMsg(e.message, true); });
+}
+let VEHICULOS_DE = { id: '', nombre: '' };
+function verVehiculos(id, nombre) {
+  VEHICULOS_DE = { id: id, nombre: nombre };
+  const panel = document.getElementById('vehiculos-panel');
+  document.getElementById('vehiculos-titulo').textContent = 'Vehículos de ' + nombre;
+  panel.style.display = 'block';
+  const tb = document.getElementById('vehiculos-body');
+  tb.innerHTML = '<tr><td colspan="6" class="empty">Cargando…</td></tr>';
+  if (panel.scrollIntoView) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  api('/admin/drivers/' + id + '/vehicles').then((rows) => {
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">No tiene vehículos registrados.</td></tr>'; return; }
+    tb.innerHTML = rows.map((v) => '<tr><td><strong>' + esc(v.brand + ' ' + v.model) + '</strong> ' +
+      '<span class="muted">' + esc(v.color + ' · ' + v.year) + '</span></td><td>' + esc(v.plate) + '</td><td>' +
+      esc(v.type) + '</td><td>' + v.viajes + '</td><td>' +
+      (v.isActive ? '<span class="badge badge-ok">Activo</span>' : '<span class="badge badge-OFFLINE">Desactivado</span>') +
+      '</td><td>' + (v.isActive || v.viajes === 0
+        ? '<button class="btn-sm btn-borrar" data-nombre="' + esc(v.plate) + '" onclick="eliminarVehiculo(\\'' + v.id + '\\', this.dataset.nombre)">' +
+          (v.viajes > 0 ? 'Desactivar' : 'Eliminar') + '</button>'
+        : '—') + '</td></tr>').join('');
+  }).catch((e) => { tb.innerHTML = ''; showMsg(e.message, true); });
+}
+function eliminarVehiculo(id, placa) {
+  if (!confirm('¿Quitar el vehículo ' + placa + '? Si tiene viajes se desactiva en vez de borrarse.')) return;
+  api('/admin/vehicles/' + id + '/delete', { method: 'POST' })
+    .then((r) => {
+      showMsg(r.modo === 'borrado' ? 'Vehículo eliminado.' : 'Vehículo desactivado. ' + r.motivo, false);
+      verVehiculos(VEHICULOS_DE.id, VEHICULOS_DE.nombre);
+      loadDrivers();
+    })
+    .catch((e) => showMsg(e.message, true));
+}
+
 function releaseDriver(id) {
   if (!confirm('¿Liberar al conductor? Se cancelarán TODOS sus servicios activos (viajes, mandados, pedidos e intermunicipales), sus fletes vuelven al tablero, y quedará ONLINE.')) return;
   api('/admin/drivers/' + id + '/release', { method: 'POST' })
@@ -2144,6 +2399,9 @@ function loadBusinesses() {
       (b.isOpen
         ? '<button class="btn-sm btn-reject" onclick="setBusiness(\\'' + b.id + '\\', \\'deactivate\\')">Desactivar</button>'
         : '<button class="btn-sm btn-approve" onclick="setBusiness(\\'' + b.id + '\\', \\'activate\\')">Activar</button>') +
+      (b.orders === 0
+        ? ' <button class="btn-sm btn-borrar" data-nombre="' + esc(b.name) + '" onclick="eliminarNegocio(\\'' + b.id + '\\', this.dataset.nombre)">Eliminar</button>'
+        : '') +
       '</td></tr>').join('');
   }).catch((e) => showMsg(e.message, true));
 }
@@ -2637,6 +2895,77 @@ function showMsg(text, isErr) {
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
+
+// ── Tablas que caben en un celular ──────────────────────────────────────────
+// Cada tabla se envuelve en .tabla (desplazamiento lateral en escritorio) y
+// cada celda recibe el texto de su encabezado en data-label: en pantallas
+// estrechas el CSS convierte las filas en tarjetas y pinta ese texto delante
+// del dato. Se hace aquí, una vez para todas, y no en cada función que pinta
+// una tabla: son más de veinte, y la que alguien añada mañana se olvidaría.
+function etiquetarTablas(raiz) {
+  if (!raiz || !raiz.querySelectorAll) return;
+  const tablas = raiz.querySelectorAll('table');
+  for (let t = 0; t < tablas.length; t++) {
+    const tabla = tablas[t];
+    const padre = tabla.parentNode;
+    if (padre && padre.classList && !padre.classList.contains('tabla') && document.createElement) {
+      const caja = document.createElement('div');
+      caja.className = 'tabla';
+      padre.insertBefore(caja, tabla);
+      caja.appendChild(tabla);
+    }
+    const filas = tabla.querySelectorAll('tr');
+    let titulos = null;
+    for (let f = 0; f < filas.length; f++) {
+      const fila = filas[f];
+      const celdas = fila.children || [];
+      if (celdas.length && celdas[0].tagName === 'TH') {
+        titulos = [];
+        for (let c = 0; c < celdas.length; c++) titulos.push((celdas[c].textContent || '').trim());
+        if (fila.classList) fila.classList.add('cabecera');
+        continue;
+      }
+      if (!titulos) continue;
+      let col = 0;
+      for (let c = 0; c < celdas.length; c++) {
+        const td = celdas[c];
+        const titulo = titulos[col] || '';
+        col += Number(td.colSpan) || 1;
+        if (td.colSpan > 1) continue;
+        // Las acciones van a lo ancho, sin rótulo: son botones, no un dato.
+        if (!titulo || /^acci/i.test(titulo)) {
+          if (td.classList) td.classList.add('acciones');
+          continue;
+        }
+        if (td.getAttribute && td.getAttribute('data-label') !== titulo) td.setAttribute('data-label', titulo);
+      }
+    }
+  }
+}
+
+(function vigilarTablas() {
+  const app = document.getElementById('app');
+  if (!app) return;
+  let pendiente = false;
+  const pasar = () => { pendiente = false; try { etiquetarTablas(app); } catch (e) { /* nunca tumba el panel */ } };
+  pasar();
+  if (typeof MutationObserver === 'undefined') return;
+  new MutationObserver(() => {
+    if (pendiente) return;
+    pendiente = true;
+    (typeof requestAnimationFrame === 'function' ? requestAnimationFrame : setTimeout)(pasar);
+  }).observe(app, { childList: true, subtree: true });
+})();
+
+// Las pestañas se quedan fijas debajo de la cabecera; en el celular la
+// cabecera puede ocupar dos renglones, así que se mide en vez de suponerla.
+function medirCabecera() {
+  const cab = document.querySelector && document.querySelector('#app header');
+  if (cab && cab.offsetHeight && document.documentElement && document.documentElement.style) {
+    document.documentElement.style.setProperty('--alto-cab', cab.offsetHeight + 'px');
+  }
+}
+if (typeof window !== 'undefined' && window.addEventListener) window.addEventListener('resize', medirCabecera);
 </script>
 </body>
 </html>`;
