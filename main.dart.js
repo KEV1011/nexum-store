@@ -36889,8 +36889,9 @@ this.b=b},
 aZX:function aZX(a,b){this.a=a
 this.b=b},
 aZY:function aZY(a){this.a=a},
-aZZ:function aZZ(a,b){this.a=a
-this.b=b},
+aZZ:function aZZ(a,b,c){this.a=a
+this.b=b
+this.c=c},
 aZU:function aZU(a){this.a=a},
 aZm:function aZm(a){this.a=a},
 aZn:function aZn(a){this.a=a},
@@ -135476,25 +135477,27 @@ case 3:if(b===!0&&p.c!=null)p.xk()
 case 1:return A.o(q,r)}})
 return A.p($async$Hq,r)}}
 A.b__.prototype={
-$1(a){var s,r,q,p,o,n=this.a,m=n.gbT().bq(0,$.fy(),t.kz)
-if(m!=null){s=$.f1()
-r=m.a
-q=r.a
-n.k3=s.p1=q
-p=r.as==null
-o=!p
-if(o)n.xD()
-if(m.b===B.l0&&p&&r.Q==null)s.Gh(q,"arriving")
-n.aaJ(m)
-n.Cb(m)
-n.azg()
-if(o){q=s.cy
-n.fx=new A.bq(q,A.k(q).h("bq<1>")).dD(new A.aZV(n,m))}else if(r.Q!=null){q=s.cx
-n.fx=new A.bq(q,A.k(q).h("bq<1>")).dD(new A.aZW(n,m))}else{q=s.CW
-n.fx=new A.bq(q,A.k(q).h("bq<1>")).dD(new A.aZX(n,m))}q=s.db
-n.fy=new A.bq(q,A.k(q).h("bq<1>")).dD(new A.aZY(n))
-if(p&&r.Q==null){s=s.go
-n.go=new A.bq(s,A.k(s).h("bq<1>")).dD(new A.aZZ(n,m))}}},
+$1(a){var s,r,q,p,o,n,m,l,k=this.a,j=k.gbT().bq(0,$.fy(),t.kz)
+if(j!=null){s=$.f1()
+r=j.a
+q=k.k3=s.p1=r.a
+p=r.as
+o=p==null
+n=!o
+if(n)k.xD()
+if(j.b===B.l0&&o&&r.Q==null)s.Gh(q,"arriving")
+k.aaJ(j)
+k.Cb(j)
+k.azg()
+if(n){m=s.cy
+k.fx=new A.bq(m,A.k(m).h("bq<1>")).dD(new A.aZV(k,j))}else if(r.Q!=null){m=s.cx
+k.fx=new A.bq(m,A.k(m).h("bq<1>")).dD(new A.aZW(k,j))}else{m=s.CW
+k.fx=new A.bq(m,A.k(m).h("bq<1>")).dD(new A.aZX(k,j))}m=s.db
+k.fy=new A.bq(m,A.k(m).h("bq<1>")).dD(new A.aZY(k))
+q=o?q:p
+l=n?"el cliente":r.b.b
+s=s.go
+k.go=new A.bq(s,A.k(s).h("bq<1>")).dD(new A.aZZ(k,q,l))}},
 $S:4}
 A.aZV.prototype={
 $1(a){var s=this.a,r=s.c
@@ -135520,19 +135523,18 @@ if(s==null)return
 A.cs(B.I,s,B.bp,a)},
 $S:9}
 A.aZZ.prototype={
-$1(a){var s,r,q,p=this.a
-if(p.c==null)return
+$1(a){var s,r,q=this.a
+if(q.c==null)return
 s=J.ar(a)
 r=s.i(a,"message")
 if(!t.P.b(r))return
-q=this.b.a
-if(!J.e(s.i(a,"tripId"),q.a))return
+if(!J.e(s.i(a,"tripId"),this.b))return
 if(A.W(J.N(r,"senderRole"))==="driver")return
-p.E(new A.aZU(p))
+q.E(new A.aZU(q))
 $.nu().FJ()
-p=p.c
-p.toString
-A.cs(B.aZ,p,B.ca,"Nuevo mensaje de "+q.b.b)},
+q=q.c
+q.toString
+A.cs(B.aZ,q,B.ca,"Nuevo mensaje de "+this.c)},
 $S:40}
 A.aZU.prototype={
 $0(){return this.a.id++},
@@ -139677,7 +139679,7 @@ n=A.a4i(i?B.aa:B.au,16,k,16)
 m=A.a4(k,B.aeT,B.l,k,k,new A.a2(B.xV.ab(0.12),k,k,A.T(8),k,k,B.t),k,38,k,k,k,k,k,38)
 o=o.z
 o=A.ao(A.ef(A.b([new A.Bj("VIAJES",k),new A.fM(B.oQ,"Inicio",new A.b_V(a),B.o,!1,k),new A.fM(B.acU,"Historial de viajes",new A.b_Z(a),B.cE,!1,k),new A.fM(B.GN,"Reservas",new A.b0_(a),B.li,!1,k),new A.fM(B.iv,"Mis fletes de carga",new A.b00(a),B.az,!1,k),new A.fM(B.Gu,"Remitos de mercanc\xeda",new A.b01(a),B.o3,!1,k),new A.fM(B.cW,"Calificaciones",new A.b02(a),B.ci,!1,k),new A.fM(B.zK,"ZIPA Pro",new A.b03(a),B.o3,!1,k),new A.fM(B.lR,"Viajes compartidos",new A.b04(a),B.a7,!1,k),new A.fM(B.dU,"Intermunicipal",new A.b_L(a),B.a7,!1,k),new A.fM(B.oY,"Verificaci\xf3n",new A.b_M(a),B.o,!1,k),new A.Bj("FINANZAS",k),new A.fM(B.ad9,"Ganancias",new A.b_N(a),B.Em,!1,k),new A.fM(B.lN,"Billetera",new A.b_O(a),B.a7b,!1,k),new A.fM(B.ad1,"Promociones",new A.b_P(a),B.a6s,!1,k),new A.Bj("HERRAMIENTAS",k),new A.fM(B.acz,"Rendimiento",new A.b_Q(a),B.a78,!1,k),new A.fM(B.GP,"Mis documentos",new A.b_R(a),B.a7n,!1,k),new A.fM(B.lV,"Centro de seguridad",new A.b_S(a),B.I,!1,k),new A.Bj("CUENTA",k),new A.fM(B.GY,"Mi perfil",new A.b_T(a),B.ED,!1,k),new A.fM(B.zB,"Soporte y FAQ",new A.b_U(a),B.xX,!1,k),new A.fM(B.GC,"Configuraci\xf3n",new A.b_W(a),B.a6i,!1,k),n,A.fH(!1,k,k,k,!0,k,12,k,!0,k,m,k,k,k,k,k,!1,k,k,k,k,k,k,A.j("Modo oscuro",k,k,k,k,k,o==null?k:o.cU(B.aJ),k,k,k),k,A.bDK(k,k,k,B.o,k,!1,B.F,k,k,k,k,k,k,new A.b_X(b),k,k,k,k,k,k,k,k,g),k),new A.fM(B.zD,"Cerrar sesi\xf3n",new A.b_Y(a,b),B.I,!0,k)],p),k,B.dm,k,B.Y,!1),1)
-return new A.a4q(h,A.dR(!0,A.a0(A.b([r,q,o,new A.a1(B.a1,A.j("ZIPA Conductor v1.0.0 \xb7 build 219",k,k,k,k,k,s==null?k:s.aB(B.b4),k,k,k),k)],p),B.k,B.f,B.h,0,B.p),B.a_,!0),k)}}
+return new A.a4q(h,A.dR(!0,A.a0(A.b([r,q,o,new A.a1(B.a1,A.j("ZIPA Conductor v1.0.0 \xb7 build 220",k,k,k,k,k,s==null?k:s.aB(B.b4),k,k,k),k)],p),B.k,B.f,B.h,0,B.p),B.a_,!0),k)}}
 A.b_H.prototype={
 $1(a){return a.length===0},
 $S:19}
