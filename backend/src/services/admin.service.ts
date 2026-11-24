@@ -463,7 +463,9 @@ export async function listDriversForAdmin(ciudad?: string | null): Promise<Admin
     // Con plaza: los que dieron su último latido ahí. Un conductor que aún no
     // se ha conectado nunca no tiene plaza y por eso no sale — decir que está
     // en una ciudad sin que lo hayamos visto ahí sería inventarlo.
-    ...(ciudad ? { where: { citySlug: ciudad } } : {}),
+    // Una cuenta borrada desde su app o desde aquí ya no es un conductor: queda
+    // anonimizada para conservar sus viajes liquidados, no para listarla.
+    where: { deletedAt: null, ...(ciudad ? { citySlug: ciudad } : {}) },
     orderBy: { createdAt: 'desc' },
     take: 200,
     include: { vehicles: { where: { isActive: true }, take: 1 } },
