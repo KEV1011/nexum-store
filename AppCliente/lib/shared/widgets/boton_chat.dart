@@ -19,13 +19,14 @@ import 'package:nexum_client/shared/services/transport_ws_service.dart';
 /// se encendía: el mandadero escribía desde la tienda y nadie se enteraba.
 class BotonChat extends StatefulWidget {
   const BotonChat({
-    super.key,
     required this.chatId,
     required this.peerName,
     required this.tooltip,
+    super.key,
   });
 
-  /// El id del servicio: viaje, envío o mandado. Es el que el servidor resuelve.
+  /// El id del servicio: viaje, envío o mandado. Es el que resuelve el
+  /// servidor.
   final String chatId;
   final String peerName;
   final String tooltip;

@@ -80,12 +80,14 @@ void main() {
       // está abierto: navegar lo sacaría de la navegación.
       expect(
         rutaDeNotificacion(
-            {'type': 'chat_message', 'servicio': 'errand', 'tripId': 'e1'}),
+          {'type': 'chat_message', 'servicio': 'errand', 'tripId': 'e1'},
+        ),
         isNull,
       );
       expect(
         rutaDeNotificacion(
-            {'type': 'chat_message', 'servicio': 'pooled', 'tripId': 'p1'}),
+          {'type': 'chat_message', 'servicio': 'pooled', 'tripId': 'p1'},
+        ),
         AppRoutes.pooledTrips,
       );
     });
