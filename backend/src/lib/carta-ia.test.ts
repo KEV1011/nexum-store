@@ -98,6 +98,17 @@ describe('la IA no puede inventar', () => {
 });
 
 describe('lo que se aplica solo y lo que se pregunta', () => {
+  it('volver «al pagar» un plato que no suena a acompañamiento se pregunta, aunque venga con confianza alta', () => {
+    // Así quedaron marcadas las pizzas enteras de dos pizzerías.
+    const r = revisarFilas(carta(), [
+      c({ linea: 6, accion: 'rol', rol: 'acompanamiento', confianza: 'alta' }),
+      c({ linea: 7, accion: 'rol', rol: 'acompanamiento', confianza: 'alta' }),
+    ], REVISION);
+    expect(r.aplicadas.map((x) => x.linea)).toEqual([7]);
+    expect(r.sugerencias.map((x) => x.linea)).toEqual([6]);
+    expect(r.filas.find((f) => f.linea === 6)!.rol).toBe('plato');
+  });
+
   it('confianza alta se aplica; media queda como sugerencia', () => {
     const r = revisarFilas(carta(), [
       c({ linea: 7, accion: 'rol', rol: 'acompanamiento', confianza: 'alta' }),

@@ -707,7 +707,10 @@ function ProductCard({
                       : 'text-slate-400 hover:text-amber-700'
                   }`}
                 >
-                  Acompañamiento
+                  {/* No «Acompañamiento»: en una carta de aquí esa palabra es
+                      lo que VIENE con el plato, y así se marcaron pizzas
+                      enteras como «se ofrece al pagar». */}
+                  Se ofrece al pagar
                 </button>
                 <div className="ml-auto flex items-center gap-0.5">
                   <button

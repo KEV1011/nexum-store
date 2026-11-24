@@ -39,7 +39,7 @@
 // deshace con `antes`, y si la fila ya no es igual al `antes` —porque el dueño
 // la tocó entre medias— no la pisa.
 
-import { ROLES_CARTA, type RolCarta } from './carta-rol';
+import { ROLES_CARTA, suenaAAcompanamiento, type RolCarta } from './carta-rol';
 import {
   bloqueDePrecios,
   nombreDeLinea,
@@ -765,6 +765,13 @@ export function seAplicaSola(c: CorreccionIA, antes: FilaRevisable, ctx: Context
   if (SOLO_CON_PERMISO.has(c.accion)) return false;
   if (c.confianza !== 'alta') return false;
   if (c.accion === 'precio' && antes.precio !== null) return false;
+  // Volver «se ofrece al pagar» algo que NO suena a bebida ni acompañamiento
+  // (una pizza, una hamburguesa) se propone, nunca se aplica solo: así
+  // quedaron marcadas las pizzas enteras de dos pizzerías, que la app dejó de
+  // reconocer como pizzas.
+  if (c.accion === 'rol' && c.rol === 'acompanamiento' && !suenaAAcompanamiento(antes.nombre, antes.seccion)) {
+    return false;
+  }
   return true;
 }
 

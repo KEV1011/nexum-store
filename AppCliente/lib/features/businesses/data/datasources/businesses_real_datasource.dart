@@ -113,6 +113,7 @@ class BusinessesRealDataSource {
           .map((g) => _mapOptionGroup(g as Map<String, dynamic>))
           .toList(),
       suggestAsAddon: j['suggestAsAddon'] as bool? ?? false,
+      pareceAcompanamiento: j['pareceAcompanamiento'] as bool? ?? true,
     );
   }
 

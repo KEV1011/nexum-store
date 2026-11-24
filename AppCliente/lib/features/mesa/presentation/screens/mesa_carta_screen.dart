@@ -209,7 +209,10 @@ class _MesaCartaScreenState extends ConsumerState<MesaCartaScreen>
     final especialidad = antojoDelLocal(negocio);
     final porSeccion = <String, List<ProductEntity>>{};
     for (final p in negocio.products) {
-      if (p.suggestAsAddon) continue;
+      // Solo sale de su sección lo que de verdad es para acompañar: una pizza
+      // marcada «al pagar» por error seguía siendo un plato de la carta y aquí
+      // desaparecía de la mesa.
+      if (esParaAcompanar(p)) continue;
       porSeccion.putIfAbsent(p.category, () => []).add(p);
     }
     final sinMesas = carta.mesas.isEmpty && !widget.paraLlevar;

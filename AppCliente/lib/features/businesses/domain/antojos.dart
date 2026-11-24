@@ -15,9 +15,10 @@
 //    plato van antes que los ingredientes sueltos.
 // 2. Primero manda el NOMBRE del plato; si no dice nada, la SECCIÓN de la
 //    carta. «La Bestia» en la sección HAMBURGUESAS es una hamburguesa.
-// 3. Lo que el local ofrece al pagar (`suggestAsAddon`: la gaseosa, las papas)
-//    no clasifica al local: una malteada de acompañamiento no convierte una
-//    hamburguesería en heladería.
+// 3. Lo que el local ofrece al pagar Y suena a acompañamiento
+//    ([esParaAcompanar]: la gaseosa, las papas) no clasifica al
+//    local: una malteada de acompañamiento no convierte una hamburguesería en
+//    heladería. Una PIZZA marcada «al pagar» sigue siendo una pizza.
 // 4. Un antojo se enseña en cuanto UN local lo tenga (ver
 //    [kMinLocalesPorAntojo]). Uno sin ninguno nunca sale: llevaría a una lista
 //    vacía, que se lee como app rota.
@@ -25,6 +26,9 @@
 //    una sección que dice el PLATO («PIZZAS»): en una pizzería, «Mexicana» es
 //    una pizza. Y si ni la sección lo dice («ESPECIALES»), lo dice el LOCAL:
 //    en «Pieros Pizza», la «Hawaiana» es una pizza (ver [antojoDelLocal]).
+//    Pero solo en una sección GENÉRICA («Especiales», «Tradicionales»): una
+//    sección con nombre propio que no reconocemos («Panne Cook», «Lasagna»,
+//    «Panzerotti») es OTRO plato, no la especialidad del local.
 
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
@@ -103,8 +107,8 @@ const List<Antojo> kAntojos = [
     'ensalada', 'bowl', 'insalata', 'insalate',
   ]),
   Antojo(clave: 'pastas', nombre: 'Pastas', palabras: [
-    'pasta', 'espagueti', 'spaghetti', 'lasana', 'fettuccine', 'fetuccini',
-    'raviol', 'ravioli', 'macarron', 'canelon',
+    'pasta', 'espagueti', 'spaghetti', 'lasana', 'lasagna', 'fettuccine',
+    'fetuccini', 'raviol', 'ravioli', 'macarron', 'canelon',
   ]),
   Antojo(clave: 'oriental', nombre: 'Oriental', palabras: [
     'arroz chino', 'arroz oriental', 'chop suey', 'wok', 'ramen', 'lumpia',
@@ -269,12 +273,62 @@ final RegExp _seccionDeOtroTiempo = RegExp(
   r'contorni)( |$)',
 );
 
+/// Es de verdad algo para ACOMPAÑAR (la gaseosa, las papas, el adicional) y
+/// no un plato: lo que no clasifica al local ni lleva dibujo (regla 3).
+///
+/// EL DEFECTO QUE CORRIGE: en producción había PIZZAS marcadas «se ofrece al
+/// pagar» — las 21 de Pieros, 14 de las 16 especiales de Hierbabuena, las 16
+/// de «Pizza porciones» de Paolos —, y como la marca a secas las sacaba del
+/// antojo, la pizzería salía en «Mostrando pizza» con sus panzerottis y sus
+/// lasañas, y sus pizzas sin dibujo. Una pizza ofrecida al pagar sigue siendo
+/// una pizza: la marca solo cuenta si el servidor dice que suena a bebida o
+/// acompañamiento ([ProductEntity.pareceAcompanamiento]) o si el nombre o la
+/// sección dicen que no es un plato («Papas fritas», «Porciones adicionales»:
+/// el servidor no cuenta los adicionales como acompañamiento).
+bool esParaAcompanar(ProductEntity p) {
+  if (!p.suggestAsAddon) return false;
+  if (p.pareceAcompanamiento) return true;
+  return _noEsPlato.hasMatch(normalizarTexto(p.name)) ||
+      _noEsPlato.hasMatch(normalizarTexto(p.category));
+}
+
+/// Palabras de una sección que NO dicen qué plato hay en ella: el adjetivo
+/// («Especiales», «Tradicionales», «Gourmet»), el tamaño («Mini pequeña
+/// mediana grande») o el relleno («Las de la casa»). Solo en una sección así
+/// el plato hereda la especialidad del local (regla 5).
+///
+/// EL DEFECTO QUE CORRIGE: en «Pieros Pizza → Mostrando pizza» salían el
+/// «Especial» de PANNE COOK, los panzerottis, el risotto, la lasaña y la
+/// milanesa de CARNES. Ninguna de esas secciones dice «pizza», pero todas
+/// dicen QUÉ son, solo que con un nombre que el catálogo no conoce — y lo que
+/// no se conoce no es la especialidad por defecto.
+const Set<String> _palabrasDeSeccionGenerica = {
+  'general', 'menu', 'carta', 'especial', 'especiales', 'especialidad',
+  'especialidades', 'tradicional', 'tradicionales', 'clasica', 'clasicas',
+  'clasico', 'clasicos', 'casa', 'gourmet', 'premium', 'recomendado',
+  'recomendados', 'recomendada', 'recomendadas', 'favorita', 'favoritas',
+  'favorito', 'favoritos', 'promocion', 'promociones', 'promo', 'promos',
+  'nueva', 'nuevas', 'nuevo', 'nuevos', 'top', 'chef', 'sabor', 'sabores',
+  'mixta', 'mixtas', 'unica', 'unico', 'nuestra', 'nuestras', 'nuestro',
+  'nuestros', 'mini', 'pequena', 'pequenas', 'mediana', 'medianas', 'grande',
+  'grandes', 'familiar', 'familiares', 'personal', 'personales', 'tamano',
+  'tamanos', 'la', 'las', 'el', 'los', 'de', 'del', 'y', 'e', 'con', 'mas',
+};
+
+bool _seccionGenerica(String seccionNormalizada) {
+  if (seccionNormalizada.isEmpty) return true;
+  return seccionNormalizada
+      .split(' ')
+      .where((w) => w.isNotEmpty)
+      .every(_palabrasDeSeccionGenerica.contains);
+}
+
 /// El antojo de un plato (reglas 1, 2, 3 y 5). Null si no es de ninguno.
 ///
 /// `delLocal` es el antojo del local entero ([antojoDelLocal]): solo se usa
 /// cuando el plato no dice por sí mismo lo que es, o lo dice solo con un sabor.
 Antojo? antojoDeProducto(ProductEntity p, {Antojo? delLocal}) {
-  if (p.suggestAsAddon) return null;
+  if (esParaAcompanar(p)) return null;
   final nombre = normalizarTexto(p.name);
   final seccion = normalizarTexto(p.category);
   final porNombre = _casaDeTexto(nombre);
@@ -295,6 +349,7 @@ Antojo? antojoDeProducto(ProductEntity p, {Antojo? delLocal}) {
     if (porLoQueTrae != null) return porLoQueTrae;
   }
   if (delLocal != null &&
+      _seccionGenerica(seccion) &&
       !_noEsPlato.hasMatch(nombre) &&
       !_noEsPlato.hasMatch(seccion) &&
       !_seccionDeOtroTiempo.hasMatch(seccion)) {
@@ -495,7 +550,7 @@ CoincidenciaBusqueda buscarEnComercio(BusinessEntity b, String consulta) {
   final conPuesto = <(int, int, ProductEntity)>[];
   var orden = 0;
   for (final p in b.products) {
-    if (p.suggestAsAddon) continue;
+    if (esParaAcompanar(p)) continue;
     final esDelAntojo =
         antojoBuscado != null &&
         antojoDeProducto(p, delLocal: especialidad)?.clave == antojoBuscado.clave;

@@ -44,6 +44,18 @@ describe('qué dice el título de la sección', () => {
   it('«Adiciones y bebidas» manda adicional: el dueño separa las bebidas', () => {
     expect(rolDeSeccion('Adiciones y bebidas')).toBe('adicional');
   });
+
+  it('«Pizza porciones» es la pizza que se vende por porción, no un acompañamiento', () => {
+    // Así entraron como «se ofrece al pagar» las 16 pizzas de Paolos.
+    expect(rolDeSeccion('Pizza porciones')).toBeNull();
+    expect(rolDeSeccion('Tortas por porción')).toBeNull();
+    expect(suenaAAcompanamiento('Hawaiana', 'Pizza porciones')).toBe(false);
+    // Las porciones de siempre siguen siendo acompañamiento.
+    expect(rolDeSeccion('Porciones de papa')).toBe('acompanamiento');
+    expect(rolDeSeccion('Porciones')).toBe('acompanamiento');
+    // Y si además dice otra cosa de acompañar, manda esa.
+    expect(rolDeSeccion('Pizza y bebidas en porciones')).toBe('acompanamiento');
+  });
 });
 
 describe('el rol de cada renglón', () => {

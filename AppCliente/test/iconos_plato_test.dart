@@ -115,6 +115,26 @@ void main() {
     expect(enPieros('Mozzarella in Carrozza', seccion: 'Entradas'), 'queso');
     expect(enPieros('César', seccion: 'Insalate'), 'ensaladas');
     expect(enPieros('Bruschetta', seccion: 'Antipasti'), isNull);
+    // Una sección con nombre propio no es la pizza del local.
+    expect(enPieros('Especial', seccion: 'Panne Cook'), isNull);
+    expect(enPieros('Hawaiano', seccion: 'Piccola Italia Panzerotti'), isNull);
+    expect(enPieros('Bolonesa con Pollo y Jamón', seccion: 'Lasagna'),
+        'pastas');
+  });
+
+  test('una pizza marcada «al pagar» conserva su dibujo', () {
+    // Hierbabuena: «Campestre» y «Cuatro quesos» salían sin dibujo y solo «De
+    // la casa» (la única sin la marca) llevaba la pizza.
+    const p = ProductEntity(
+      id: 'campestre',
+      name: 'Campestre',
+      description: '',
+      price: 24000,
+      category: 'Pizzas especiales',
+      suggestAsAddon: true,
+      pareceAcompanamiento: false,
+    );
+    expect(iconoDePlato(p)?.split('/').last, 'pizza.png');
   });
 
   test('un ingrediente en el nombre no le gana al plato de la sección', () {

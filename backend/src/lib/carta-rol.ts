@@ -66,6 +66,22 @@ const SECCION_ACOMPANAMIENTO = [
 ];
 
 /**
+ * Platos que se VENDEN por porciones. En «Pizza porciones» o «Tortas por
+ * porción», la palabra dice cómo se vende el plato, no que sea el
+ * acompañamiento de otro.
+ *
+ * EL DEFECTO QUE CORRIGE: en producción, las 16 pizzas de la sección «Pizza
+ * porciones» de Paolos se importaron como «se ofrece al pagar» — la app las
+ * sacaba del antojo de pizza y el carrito le ofrecía pizzas a quien ya pedía
+ * una pizza.
+ */
+const PLATO_POR_PORCIONES = [
+  'pizza', 'pizzas', 'torta', 'tortas', 'pastel', 'pasteles', 'ponque',
+  'ponques', 'cheesecake', 'lasana', 'lasanas', 'lasagna', 'lasagnas', 'quiche',
+  'pie', 'brownie', 'brownies',
+];
+
+/**
  * El NOMBRE de un renglón suena a BEBIDA.
  *
  * Se mira solo la PRIMERA palabra: «Gaseosa 350 ml» y «Coca cola» lo son;
@@ -129,8 +145,13 @@ export function rolDeSeccion(seccion: string): RolCarta | null {
   // La sección de adicionales manda sobre la de bebidas: «Adiciones y
   // bebidas» se trata como adicionales y el dueño separa las bebidas.
   if (palabras.some((p) => SECCION_ADICIONAL.includes(p))) return 'adicional';
-  if (palabras.some((p) => SECCION_ACOMPANAMIENTO.includes(p))) return 'acompanamiento';
-  return null;
+  const deAcompanar = palabras.filter((p) => SECCION_ACOMPANAMIENTO.includes(p));
+  if (deAcompanar.length === 0) return null;
+  // «Pizza porciones»: si lo único que suena a acompañamiento es «porción» y
+  // la sección nombra un plato que se vende así, es ese plato.
+  const soloPorciones = deAcompanar.every((p) => p === 'porcion' || p === 'porciones');
+  if (soloPorciones && palabras.some((p) => PLATO_POR_PORCIONES.includes(p))) return null;
+  return 'acompanamiento';
 }
 
 export interface RolPropuesto {
