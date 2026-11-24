@@ -1,0 +1,13 @@
+{
+  "comentario": "Fuente única de las voces de las notificaciones. La lee tools/generar-voces.mjs para producir los audios y la prueba backend/src/lib/voces-aviso.test.ts para que el servidor no pida una voz que no existe. Cambiar un texto = volver a correr el workflow «Generar voces».",
+  "voz": "es-US-Chirp3-HD-Aoede",
+  "frases": [
+    { "id": "conductor_en_camino", "texto": "Tu conductor va en camino.", "apps": ["cliente"] },
+    { "id": "conductor_llego", "texto": "Tu conductor llegó.", "apps": ["cliente"] },
+    { "id": "repartidor_llego", "texto": "El repartidor llegó por tu envío.", "apps": ["cliente"] },
+    { "id": "pedido_en_camino", "texto": "Tu pedido va en camino.", "apps": ["cliente"] },
+    { "id": "mandado_en_camino", "texto": "Tu mandado va en camino.", "apps": ["cliente"] },
+    { "id": "mensaje_nuevo", "texto": "Tienes un mensaje nuevo.", "apps": ["cliente", "conductor"] },
+    { "id": "viaje_cancelado", "texto": "El pasajero canceló el viaje.", "apps": ["conductor"] }
+  ]
+}

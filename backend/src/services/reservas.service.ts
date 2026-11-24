@@ -665,6 +665,7 @@ export async function activarReservas(): Promise<number> {
         title: 'Tu conductor va en camino',
         body: 'El conductor que apartaste ya salió hacia el punto de recogida.',
         data: { type: 'trip_accepted', tripId: t.id },
+        voz: 'conductor_en_camino',
       });
     }
     void notifyClientTripUpdateById(t.id);

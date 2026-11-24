@@ -298,7 +298,7 @@ async function _avisarDestinatarios(
         tripId,
       };
       if (info.servicio === 'order') data.orderId = tripId;
-      const payload = { title: titulo, body: cuerpo, data };
+      const payload = { title: titulo, body: cuerpo, data, voz: 'mensaje_nuevo' as const };
       await (destino.rol === 'driver'
         ? sendPushToDriver(destino.id, payload)
         : sendPushToClient(destino.id, payload));

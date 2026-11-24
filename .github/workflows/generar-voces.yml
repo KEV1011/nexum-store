@@ -1,0 +1,49 @@
+name: Generar voces
+
+# Genera UNA vez los audios de las notificaciones con la voz de Google y los
+# sube a la rama desde la que se lanzó. Manual: solo hace falta volver a
+# correrlo si cambia una frase de tools/voces/frases.json.
+#
+# Costo: cero. Son ~200 letras y Google regala el primer millón al mes; el
+# script se niega a pedir más de 2.000 letras por corrida.
+#
+# Necesita el secret GOOGLE_TTS_API_KEY: una llave de Google Cloud con la API
+# «Cloud Text-to-Speech» habilitada.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  generar:
+    name: Generar voces
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Generar los audios
+        env:
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
+        run: node tools/generar-voces.mjs
+
+      - name: Subir los audios a la rama
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add AppCliente/android/app/src/main/res/raw AppTransport/android/app/src/main/res/raw \
+                  AppCliente/lib/core/voces AppTransport/lib/core/voces
+          if git diff --cached --quiet; then
+            echo "Las voces ya estaban al día: nada que subir."
+            exit 0
+          fi
+          git commit -m "Voces de las notificaciones generadas con Google"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

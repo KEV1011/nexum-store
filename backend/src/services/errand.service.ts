@@ -336,6 +336,7 @@ export async function declararEtaDeMandado(
       title: 'Tu mandado va en camino',
       body: `${e.driverName ?? 'Tu repartidor'} lo entrega ${textoEtaDeclarada(eta)}.`,
       data: { type: 'errand_eta', errandId },
+      voz: 'mandado_en_camino',
     });
   }
   return { ok: true, minutos: eta };

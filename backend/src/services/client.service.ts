@@ -1323,6 +1323,7 @@ export async function updateOrderStatusByDriver(
       title: 'Tu pedido va en camino',
       body: `${updated.business?.name ?? 'El negocio'} despachó tu pedido.`,
       data: { type: 'order_in_transit', orderId },
+      voz: 'pedido_en_camino',
     });
   } else if (updated.userId && status === 'delivered') {
     void sendPushToClient(updated.userId, {
@@ -1735,6 +1736,7 @@ function _avisarPasajero(
     title: aviso.title,
     body: aviso.body,
     data: { type: aviso.type, tripId },
+    voz: aviso.voz,
   });
   // Y por WhatsApp, si el viaje se pidió por ahí. Quien pide desde el chat no
   // tiene la app instalada: sin esto pediría el taxi y no volvería a saber
@@ -1783,6 +1785,7 @@ export async function cancelClientTrip(clientId: string, tripId: string): Promis
       title: aviso.title,
       body: aviso.body,
       data: { type: aviso.type, tripId },
+      voz: aviso.voz,
     });
     await liberarConductorSiNoTieneMas(trip.driverId);
   }

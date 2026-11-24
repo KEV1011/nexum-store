@@ -17,6 +17,8 @@
  * se pierde también el aviso que sí importaba.
  */
 
+import type { VozAviso } from './voces-aviso';
+
 /** Los estados que la app manda; mismo vocabulario que `ClientTripStatus`. */
 export type EstadoViaje =
   | 'searching' | 'accepted' | 'arriving' | 'arrived'
@@ -27,6 +29,8 @@ export interface AvisoViaje {
   body: string;
   /** Va en `data.type`; la app lo usa para saber a qué pantalla llevar. */
   type: string;
+  /** La frase hablada que suena con él, si el momento la merece. */
+  voz?: VozAviso;
 }
 
 export interface DatosDelViaje {
@@ -73,6 +77,7 @@ export function avisoDeEstado(
             ? `Ya está en el punto de recogida. Tu código para subirte: ${datos.codigoAbordaje}.`
             : 'Ya está en el punto de recogida esperándote.',
         type: 'trip_arrived',
+        voz: envio ? 'repartidor_llego' : 'conductor_llego',
       };
 
     case 'in_progress':
@@ -127,5 +132,6 @@ export function avisoCancelacionAlConductor(origen?: string | null): AvisoViaje 
       ? `Ya no tienes que ir a ${origen}. Vuelves a estar disponible.`
       : 'Ya no tienes que ir a la recogida. Vuelves a estar disponible.',
     type: 'trip_cancelled',
+    voz: 'viaje_cancelado',
   };
 }
