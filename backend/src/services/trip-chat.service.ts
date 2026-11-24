@@ -6,6 +6,14 @@
 // conductor del viaje pueden leer/escribir.
 
 import { prisma } from '../lib/prisma';
+import {
+  cuerpoDeAvisoChat,
+  RitmoDeAvisos,
+  tituloDeAvisoChat,
+  type RolDeChat,
+  type ServicioDeChat,
+} from '../lib/aviso-chat';
+import { sendPushToClient, sendPushToDriver } from './push.service';
 
 export class TripChatError extends Error {}
 
@@ -173,6 +181,7 @@ export async function postTripChat(
   });
   const [dto] = await _conNombres(tripId, [_toDTO(row)]);
   for (const cb of _listeners.get(tripId) ?? []) cb(dto);
+  void _avisarDestinatarios(tripId, senderId, dto);
   return dto;
 }
 
@@ -195,7 +204,108 @@ export async function postTripChatPhoto(
   });
   const [dto] = await _conNombres(tripId, [_toDTO(row)]);
   for (const cb of _listeners.get(tripId) ?? []) cb(dto);
+  void _avisarDestinatarios(tripId, senderId, dto);
   return dto;
+}
+
+// ── Aviso a quien no tiene el chat abierto ───────────────────────────────────
+//
+// El reparto de arriba solo llega a quien está DENTRO de la pantalla del chat.
+// A los demás participantes se les entrega el mensaje por su socket (así su
+// contador de no leídos sube aunque estén en el seguimiento) y una notificación
+// al teléfono, con pausa entre avisos. `ws.handler` registra la entrega para no
+// importar sockets desde aquí (patrón del repo, evita el ciclo).
+
+export interface DestinoDeChat {
+  rol: RolDeChat;
+  id: string;
+}
+
+/** Devuelve true si el destinatario YA está viendo ese chat (no hace falta avisar). */
+type EntregaDeChat = (destino: DestinoDeChat, tripId: string, msg: TripChatMessageDTO) => boolean;
+let _entregar: EntregaDeChat | null = null;
+
+export function registerAvisoDeChat(fn: EntregaDeChat): void {
+  _entregar = fn;
+}
+
+const _ritmo = new RitmoDeAvisos();
+
+/** Participantes del chat, qué servicio es y cómo se llama quien escribe. */
+async function _participantes(
+  tripId: string,
+): Promise<{ servicio: ServicioDeChat; personas: DestinoDeChat[] } | null> {
+  const trip = await prisma.trip.findUnique({
+    where: { id: tripId },
+    select: { passengerId: true, driverId: true, serviceType: true },
+  });
+  if (trip) {
+    return {
+      servicio: trip.serviceType === 'ENVIOS' ? 'envio' : 'trip',
+      personas: _par(trip.passengerId, trip.driverId),
+    };
+  }
+  const errand = await prisma.errand.findUnique({
+    where: { id: tripId },
+    select: { userId: true, driverId: true },
+  });
+  if (errand) return { servicio: 'errand', personas: _par(errand.userId, errand.driverId) };
+  const order = await prisma.order.findUnique({
+    where: { id: tripId },
+    select: { userId: true, driverId: true },
+  });
+  if (order) return { servicio: 'order', personas: _par(order.userId, order.driverId) };
+  const salida = await _participantesDeSalida(tripId);
+  if (salida) {
+    const personas: DestinoDeChat[] = [];
+    for (const id of salida.nombres.keys()) {
+      personas.push({ rol: id === salida.driverId ? 'driver' : 'client', id });
+    }
+    return { servicio: 'pooled', personas };
+  }
+  return null;
+}
+
+function _par(clientId: string | null, driverId: string | null): DestinoDeChat[] {
+  const out: DestinoDeChat[] = [];
+  if (clientId) out.push({ rol: 'client', id: clientId });
+  if (driverId) out.push({ rol: 'driver', id: driverId });
+  return out;
+}
+
+/**
+ * Best-effort: un fallo aquí no puede tumbar el envío del mensaje, que ya
+ * quedó guardado y repartido.
+ */
+async function _avisarDestinatarios(
+  tripId: string,
+  senderId: string,
+  dto: TripChatMessageDTO,
+): Promise<void> {
+  try {
+    const info = await _participantes(tripId);
+    if (!info) return;
+    const titulo = tituloDeAvisoChat(info.servicio, dto.senderRole, dto.senderName);
+    const cuerpo = cuerpoDeAvisoChat(dto.body, !!dto.imageUrl);
+    for (const destino of info.personas) {
+      if (destino.id === senderId) continue;
+      const viendo = _entregar ? _entregar(destino, tripId, dto) : false;
+      if (viendo) continue;
+      if (!_ritmo.tocaAvisar(destino.id, tripId)) continue;
+      const data: Record<string, string> = {
+        type: 'chat_message',
+        servicio: info.servicio,
+        tripId,
+      };
+      if (info.servicio === 'order') data.orderId = tripId;
+      const payload = { title: titulo, body: cuerpo, data, voz: 'mensaje_nuevo' as const };
+      await (destino.rol === 'driver'
+        ? sendPushToDriver(destino.id, payload)
+        : sendPushToClient(destino.id, payload));
+    }
+  } catch (err) {
+    console.warn('[Chat] No se pudo avisar del mensaje nuevo:', err);
+  }
 }
 
 /** Suscripción en vivo al chat del viaje (usada por ws.handler). */

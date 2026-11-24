@@ -105,6 +105,7 @@ import {
   subscribeTripChat,
   getTripChat,
   TripChatError,
+  registerAvisoDeChat,
 } from '../services/trip-chat.service';
 import { initBus, publishDelivery, BusTarget } from '../lib/bus';
 import { liberarConductorOcioso } from '../lib/liberar-conductor';
@@ -1663,6 +1664,23 @@ export function setupWebSocket(wss: WebSocketServer): void {
   // Wire up matching callbacks so the service can reach driver sockets and
   // notify passengers, without importing WebSocket internals directly.
   registerSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));
+  // Mensaje nuevo en el chat de un servicio: a quien no tiene el chat abierto
+  // se le entrega por su socket (sube su contador de no leídos) y el servicio
+  // le manda además la notificación. Devuelve si ya lo estaba viendo.
+  registerAvisoDeChat((destino, tripId, message) => {
+    // Cualquier socket suyo con el chat abierto cuenta: la app del pasajero
+    // puede tener más de una conexión y la vigente no tiene por qué ser la
+    // del chat.
+    for (const [ws, subs] of tripChatSubs) {
+      if (!subs.has(tripId) || ws.readyState !== WebSocket.OPEN) continue;
+      const quien = destino.rol === 'client' ? clientIdByWs.get(ws) : driverIdByWs.get(ws);
+      if (quien === destino.id) return true;
+    }
+    const payload = { type: 'trip_chat_message', message };
+    if (destino.rol === 'client') sendToClient(destino.id, payload);
+    else sendToDriverById(destino.id, payload);
+    return false;
+  });
   registerNotifyTripUpdate(notifyClientTripUpdateById);
   // Los avisos del viaje también van al chat de WhatsApp, para quien pidió por
   // ahí y no tiene la app. Se inyecta aquí por el mismo motivo que los de

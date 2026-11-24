@@ -206,25 +206,27 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
           AppSnackbar.showError(context, mensaje);
         });
 
-        // Chat con el pasajero: avisa cuando llega un mensaje suyo y el chat no
-        // está abierto (badge en el botón + snackbar + vibración), para que el
-        // conductor sepa que le escribieron.
-        if (!trip.request.isOrder && !trip.request.isErrand) {
-          _chatSub = DriverWsService().tripChatEvents.listen((event) {
-            if (!mounted) return;
-            final msg = event['message'];
-            if (msg is! Map<String, dynamic>) return;
-            if (event['tripId'] != trip.request.id) return;
-            // Solo cuenta los mensajes del pasajero (no los propios).
-            if ((msg['senderRole'] as String?) == 'driver') return;
-            setState(() => _unreadChat++);
-            NotificationService().vibrateSelection();
-            AppSnackbar.showInfo(
-              context,
-              'Nuevo mensaje de ${trip.request.passenger.name}',
-            );
-          });
-        }
+        // Chat con quien recibe: avisa cuando llega un mensaje suyo y el chat
+        // no está abierto (badge en el botón + snackbar + vibración). Vale
+        // también en pedidos y mandados: antes se cerraba a ellos, y el cliente
+        // que respondía «sí, lleve la otra marca» no le encendía nada al
+        // mandadero. El id del chat es el del SERVICIO (en un pedido, el del
+        // pedido), el mismo que usa el botón.
+        final chatId = trip.request.orderId ?? trip.request.id;
+        final quien = trip.request.isOrder
+            ? 'el cliente'
+            : trip.request.passenger.name;
+        _chatSub = DriverWsService().tripChatEvents.listen((event) {
+          if (!mounted) return;
+          final msg = event['message'];
+          if (msg is! Map<String, dynamic>) return;
+          if (event['tripId'] != chatId) return;
+          // Solo cuenta los mensajes del otro lado (no los propios).
+          if ((msg['senderRole'] as String?) == 'driver') return;
+          setState(() => _unreadChat++);
+          NotificationService().vibrateSelection();
+          AppSnackbar.showInfo(context, 'Nuevo mensaje de $quien');
+        });
       }
     });
   }

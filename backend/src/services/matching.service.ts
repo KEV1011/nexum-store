@@ -1054,6 +1054,9 @@ export async function onDriverAccept(tripId: string, driverId: string): Promise<
       title: 'Conductor asignado',
       body: 'Tu conductor está en camino. Abre la app para seguirlo en el mapa.',
       data: { type: 'trip_accepted', tripId },
+      // En un envío quien va en camino es por el paquete: no hay frase para
+      // eso, así que suena el aviso de siempre.
+      ...(updated.serviceType === 'ENVIOS' ? {} : { voz: 'conductor_en_camino' as const }),
     });
   }
 

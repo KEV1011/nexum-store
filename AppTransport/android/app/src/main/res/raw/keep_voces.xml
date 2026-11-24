@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Las voces de las notificaciones (zipa_voz_*.wav, workflow «Generar voces»)
+  solo se nombran como texto en el canal, y el encogedor de recursos del build
+  release borra lo que no ve referenciado: sin esto, el APK saldría sin voces
+  y sonaría el tono de siempre sin un solo error.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/zipa_voz_*" />

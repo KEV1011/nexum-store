@@ -75,6 +75,23 @@ void main() {
       );
     });
 
+    test('un mensaje del chat no saca al conductor del viaje activo', () {
+      // El chat de un viaje, pedido o mandado vive en el viaje activo, que ya
+      // está abierto: navegar lo sacaría de la navegación.
+      expect(
+        rutaDeNotificacion(
+          {'type': 'chat_message', 'servicio': 'errand', 'tripId': 'e1'},
+        ),
+        isNull,
+      );
+      expect(
+        rutaDeNotificacion(
+          {'type': 'chat_message', 'servicio': 'pooled', 'tripId': 'p1'},
+        ),
+        AppRoutes.pooledTrips,
+      );
+    });
+
     test('lo que no lleva a ningún sitio devuelve null, no el home', () {
       // Sacar al conductor de lo que estaba haciendo por un aviso que no le
       // pide nada es peor que no navegar.

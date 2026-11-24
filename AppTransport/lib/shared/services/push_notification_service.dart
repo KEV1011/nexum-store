@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart'
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:nexum_driver/core/voces/canales_voz.dart';
 import 'package:go_router/go_router.dart';
 import 'package:nexum_driver/app/router/app_router.dart';
 import 'package:nexum_driver/core/network/dio_client.dart';
@@ -69,6 +70,13 @@ class PushNotificationService {
             android: AndroidInitializationSettings('@mipmap/ic_launcher'),
           ),
         );
+        // Un canal por frase hablada: el servidor manda cada aviso con voz
+        // al suyo. Crearlo de nuevo no hace nada si ya existe.
+        final android = _local.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+        for (final canal in canalesDeVoz()) {
+          await android?.createNotificationChannel(canal);
+        }
       }
 
       // Background handler
@@ -196,6 +204,26 @@ class PushNotificationService {
     if (_esIos) return;
     final n = msg.notification;
     if (n == null) return;
+
+    // Con la app abierta la pinta la app: si el aviso trae voz, en SU canal,
+    // que es el que la hace sonar.
+    final voz = canalDeVozDe(n.android?.channelId);
+    if (voz != null) {
+      _local.show(
+        msg.hashCode,
+        n.title,
+        n.body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            voz,
+            'Voz',
+            importance: Importance.high,
+            priority: Priority.high,
+          ),
+        ),
+      );
+      return;
+    }
 
     _local.show(
       msg.hashCode,

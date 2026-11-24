@@ -1,4 +1,5 @@
 import { prisma } from '../lib/prisma';
+import { canalDeVoz, sonidoIosDeVoz, type VozAviso } from '../lib/voces-aviso';
 import { veredictoPush } from '../lib/veredicto-push';
 import { tokenMuerto } from '../lib/token-muerto';
 
@@ -20,6 +21,11 @@ export interface PushPayload {
   body: string;
   /** Datos extra que la app usa para abrir la pantalla correcta. */
   data?: Record<string, string>;
+  /**
+   * La frase hablada que suena con el aviso (ver `lib/voces-aviso`). Sin ella,
+   * el sonido de siempre.
+   */
+  voz?: VozAviso;
 }
 
 type Messaging = {
@@ -27,7 +33,10 @@ type Messaging = {
     token: string;
     notification: { title: string; body: string };
     data?: Record<string, string>;
-    android: { priority: 'high' | 'normal' };
+    android: {
+      priority: 'high' | 'normal';
+      notification?: { channelId: string; sound: string };
+    };
     apns: {
       headers: Record<string, string>;
       payload: { aps: { contentAvailable: boolean; sound: string } };
@@ -50,6 +59,25 @@ const APNS = {
   headers: { 'apns-priority': '10', 'apns-push-type': 'alert' },
   payload: { aps: { contentAvailable: true, sound: 'default' } },
 };
+
+/**
+ * Lo que cambia cuando el aviso lleva voz: en Android el CANAL (desde Android 8
+ * el sonido es del canal y no del mensaje; el canal lo crea la app) y en iOS el
+ * archivo del paquete. Exportada para probarla sin Firebase.
+ */
+export function entregaConVoz(voz?: VozAviso): Pick<Parameters<Messaging['send']>[0], 'android' | 'apns'> {
+  if (!voz) return { android: { priority: 'high' }, apns: APNS };
+  return {
+    android: {
+      priority: 'high',
+      notification: { channelId: canalDeVoz(voz), sound: canalDeVoz(voz) },
+    },
+    apns: {
+      headers: APNS.headers,
+      payload: { aps: { ...APNS.payload.aps, sound: sonidoIosDeVoz(voz) } },
+    },
+  };
+}
 
 let _messaging: Messaging | null = null;
 let _initAttempted = false;
@@ -163,8 +191,7 @@ async function _sendToToken(
       token,
       notification: { title: payload.title, body: payload.body },
       data: payload.data,
-      android: { priority: 'high' },
-      apns: APNS,
+      ...entregaConVoz(payload.voz),
     });
     _cuentas.enviados++;
     _ultimoEnvio = new Date().toISOString();
