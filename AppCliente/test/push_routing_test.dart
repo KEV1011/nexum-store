@@ -117,6 +117,37 @@ void main() {
       );
     });
 
+    test('un mensaje del chat lleva a la pantalla de SU servicio', () {
+      // Ahí está el botón del chat con el contador de no leídos.
+      expect(
+        rutaDeNotificacion(
+            {'type': 'chat_message', 'servicio': 'envio', 'tripId': 't1'}),
+        AppRoutes.transportTrackingPath('t1'),
+      );
+      expect(
+        rutaDeNotificacion(
+            {'type': 'chat_message', 'servicio': 'errand', 'tripId': 'e1'}),
+        AppRoutes.errandStatus,
+      );
+      expect(
+        rutaDeNotificacion({
+          'type': 'chat_message',
+          'servicio': 'order',
+          'tripId': 'o1',
+          'orderId': 'o1',
+        }),
+        AppRoutes.orderPath('o1'),
+      );
+      expect(
+        rutaDeNotificacion(
+            {'type': 'chat_message', 'servicio': 'pooled', 'tripId': 'p1'}),
+        AppRoutes.puestoViajePath('p1'),
+      );
+      // Sin id no se puede armar la ruta: al inicio, nunca una ruta rota.
+      expect(rutaDeNotificacion({'type': 'chat_message', 'servicio': 'trip'}),
+          AppRoutes.home);
+    });
+
     test('lo desconocido devuelve null y no mueve al usuario', () {
       expect(rutaDeNotificacion({'type': 'promo_del_mes'}), isNull);
       expect(rutaDeNotificacion(<String, dynamic>{}), isNull);

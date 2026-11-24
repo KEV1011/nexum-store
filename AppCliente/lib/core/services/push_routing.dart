@@ -53,6 +53,25 @@ String? rutaDeNotificacion(Map<String, dynamic> data) {
           ? AppRoutes.transportTrackingPath(tripId)
           : AppRoutes.home;
 
+    // Mensaje nuevo en el chat del servicio: a la pantalla de ESE servicio,
+    // que es donde está el botón del chat con su contador. Sin id se cae al
+    // inicio en vez de romper la ruta paramétrica.
+    case 'chat_message':
+      final servicio = data['servicio'];
+      final ok = tripId is String && tripId.isNotEmpty;
+      switch (servicio) {
+        case 'errand':
+          return AppRoutes.errandStatus;
+        case 'order':
+          return orderId is String && orderId.isNotEmpty
+              ? AppRoutes.orderPath(orderId)
+              : AppRoutes.home;
+        case 'pooled':
+          return ok ? AppRoutes.puestoViajePath(tripId) : AppRoutes.puestoUrbano;
+        default:
+          return ok ? AppRoutes.transportTrackingPath(tripId) : AppRoutes.home;
+      }
+
     case 'order_accepted':
     case 'order_preparing':
     case 'order_ready':

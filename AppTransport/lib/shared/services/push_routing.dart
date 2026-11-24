@@ -61,6 +61,14 @@ String? rutaDeNotificacion(Map<String, dynamic> data) {
     case 'pooled_urban_new':
       return AppRoutes.pooledTrips;
 
+    // Mensaje nuevo en el chat: en un viaje por puestos, a la lista de viajes
+    // compartidos (ahí está su chat). En un viaje, pedido o mandado el chat
+    // vive en el viaje activo, que ya está abierto si la app lo está: mover al
+    // conductor de ahí sería sacarlo de la navegación. Con la app cerrada, el
+    // inicio le ofrece retomar el servicio.
+    case 'chat_message':
+      return data['servicio'] == 'pooled' ? AppRoutes.pooledTrips : null;
+
     case 'support_reply':
       return AppRoutes.support;
 

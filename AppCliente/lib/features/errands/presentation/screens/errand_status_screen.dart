@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:nexum_client/features/transport/presentation/screens/trip_chat_screen.dart';
+import 'package:nexum_client/shared/widgets/boton_chat.dart';
 import 'package:nexum_client/core/widgets/app_snackbar.dart';
 import 'package:nexum_client/shared/widgets/vehicle_glyph.dart';
 import 'package:nexum_client/shared/widgets/driver_info_card.dart';
@@ -565,23 +565,12 @@ class _MessengerCard extends StatelessWidget {
       fallbackGlyph: VehicleGlyphKind.delivery,
       esEntrega: true,
       actions: [
-        // Chat con el mensajero. El backend lo autoriza desde que
-        // `_assertParticipant` mira Trip, Errand U Order; faltaba el botón.
-        IconButton(
-          style: IconButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-          ),
+        // Chat con el mensajero, con el contador de no leídos: el que escribe
+        // desde la tienda «no hay de esa marca» necesita que se note.
+        BotonChat(
+          chatId: errand.id,
+          peerName: errand.messengerName ?? 'Mensajero',
           tooltip: 'Chat con el mensajero',
-          icon: const Icon(Icons.chat_bubble_rounded),
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => TripChatScreen(
-                tripId: errand.id,
-                peerName: errand.messengerName ?? 'Mensajero',
-              ),
-            ),
-          ),
         ),
         // El número real no se expone, así que este botón explica el contacto
         // protegido en vez de fingir una llamada.
