@@ -40,6 +40,12 @@ import {
 import { resolverLineasDePedido, descontarInventario } from './order-lines.service';
 import { exigirPuntoRecogida, exigirPuntoDestino } from '../lib/trip-coords';
 import { guardaNoTerminal } from '../lib/estado-terminal';
+import {
+  ETA_MAXIMO_MIN,
+  ETA_MINIMO_MIN,
+  saneaEtaDeclarada,
+  textoEtaDeclarada,
+} from '../lib/eta-declarada';
 import { recordCompletedTrip } from './earnings.service';
 import {
   fichaFromDriver, fichaPorConductor, fichasPorConductores,
@@ -798,7 +804,10 @@ export type ClientOrderWithPinDTO = ClientOrderSummaryDTO & { deliveryPin?: stri
 export async function getClientOrders(clientId: string): Promise<ClientOrderWithPinDTO[]> {
   const orders = await prisma.order.findMany({
     where: { userId: clientId },
-    include: { lines: true, business: { select: { name: true, lat: true, lng: true } } },
+    include: {
+      lines: true,
+      business: { select: { id: true, name: true, lat: true, lng: true, citySlug: true } },
+    },
     orderBy: { createdAt: 'desc' },
   });
   const fichas = await fichasPorConductores(orders.map((o) => o.driverId));
@@ -827,7 +836,7 @@ export async function getClientOrderById(
     where: { id: orderId, userId: clientId },
     include: {
       lines: true,
-      business: { select: { name: true, lat: true, lng: true } },
+      business: { select: { id: true, name: true, lat: true, lng: true, citySlug: true } },
       // La bitácora va SOLO en el detalle. En el listado son veinte pedidos
       // por sus eventos, y ahí no se pinta ninguna línea de tiempo: sería
       // peso que nadie mira.
@@ -1333,6 +1342,56 @@ export async function updateOrderStatusByDriver(
   const summary = _toSummary(updated, updated.business?.name ?? 'Negocio', updated.lines);
   emitirCambioDePedido(orderId, updated.businessId, summary);
   return summary;
+}
+
+/**
+ * «Entrego en X minutos» en un PEDIDO, lo que el repartidor le promete al
+ * cliente. El botón vivía solo para mandados, pero la app del conductor lo
+ * enseña también en los pedidos (su oferta lleva el detalle de la compra), y
+ * al tocarlo mandaba el id del pedido a la ruta de mandados: «Este mandado ya
+ * no está activo o no es tuyo», con el pedido perfectamente vivo.
+ *
+ * Reescribe `Order.etaMinutes`, que es justo lo que el cliente lee como
+ * «Llega en ~X min»: desde que el repartidor lo dice, su tiempo manda sobre
+ * el de la cocina. Pertenencia y estado van en la MISMA escritura.
+ */
+export async function declararEtaDePedido(
+  driverId: string,
+  orderId: string,
+  minutos: unknown,
+): Promise<{ ok: true; minutos: number } | { ok: false; motivo: string }> {
+  const eta = saneaEtaDeclarada(minutos);
+  if (eta === null) {
+    return {
+      ok: false,
+      motivo: `Di un tiempo entre ${ETA_MINIMO_MIN} y ${ETA_MAXIMO_MIN} minutos.`,
+    };
+  }
+  const avance = await prisma.order.updateMany({
+    where: {
+      id: orderId,
+      driverId,
+      status: guardaNoTerminal('order') as { notIn: OrderStatus[] },
+    },
+    data: { etaMinutes: eta },
+  });
+  if (avance.count === 0) {
+    return { ok: false, motivo: 'Este pedido ya no está activo o no es tuyo.' };
+  }
+  await avisarCambioDePedido(orderId);
+  const o = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { userId: true, driverName: true },
+  });
+  if (o?.userId) {
+    void sendPushToClient(o.userId, {
+      title: 'Tu pedido va en camino',
+      body: `${o.driverName ?? 'Tu repartidor'} lo entrega ${textoEtaDeclarada(eta)}.`,
+      data: { type: 'order_eta', orderId },
+      voz: 'pedido_en_camino',
+    });
+  }
+  return { ok: true, minutos: eta };
 }
 
 // ─── Client Trips ─────────────────────────────────────────────────────────────
@@ -2340,12 +2399,25 @@ function _toSummary(
  */
 async function _withOrderGeo(
   dto: ClientOrderWithPinDTO,
-  o: { businessId: string; driverId: string | null; status: string },
-  businessGeo?: { lat: number | null; lng: number | null } | null,
+  o: {
+    businessId: string; driverId: string | null; status: string;
+    hubAt: Date | null; hubLat: number | null; hubLng: number | null;
+    deliveryLat: number | null; deliveryLng: number | null;
+  },
+  business?: {
+    id: string; name: string; lat: number | null; lng: number | null; citySlug: string | null;
+  } | null,
 ): Promise<ClientOrderWithPinDTO> {
-  if (businessGeo?.lat != null && businessGeo.lng != null) {
-    dto.businessLat = businessGeo.lat;
-    dto.businessLng = businessGeo.lng;
+  // El punto de recogida sale de la MISMA regla que la oferta del repartidor.
+  // Antes se pintaba el punto GUARDADO del local: con un local mal
+  // geocodificado (sin ciudad, cae en cualquier parte del país) el cliente veía
+  // su pedido saliendo de Bucaramanga mientras el repartidor iba al sitio
+  // correcto en Pamplona.
+  if (business && business.lat != null && business.lng != null) {
+    const { puntoDeRecogidaDePedido } = await import('./order-offer.service');
+    const p = await puntoDeRecogidaDePedido(o, business);
+    dto.businessLat = p.lat;
+    dto.businessLng = p.lng;
   }
   const enCurso = o.status === 'DRIVER_TO_PICKUP' || o.status === 'AT_PICKUP' || o.status === 'IN_TRANSIT';
   if (o.driverId && enCurso) {

@@ -76,6 +76,7 @@ String? rutaDeNotificacion(Map<String, dynamic> data) {
     case 'order_preparing':
     case 'order_ready':
     case 'order_in_transit':
+    case 'order_eta':
       return orderId is String && orderId.isNotEmpty
           ? AppRoutes.orderPath(orderId)
           : AppRoutes.home;
