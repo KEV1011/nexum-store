@@ -36,6 +36,11 @@ class BusinessesRealDataSource {
   static BusinessEntity negocioDesdeJson(Map<String, dynamic> j) =>
       _mapToEntity(j);
 
+  /// El mismo lector de productos para la sección de una campaña, que trae
+  /// el producto con el MISMO DTO de la carta.
+  static ProductEntity productoDesdeJson(Map<String, dynamic> j) =>
+      _mapProduct(j);
+
   static BusinessEntity _mapToEntity(Map<String, dynamic> j) {
     return BusinessEntity(
       id: j['id'] as String,

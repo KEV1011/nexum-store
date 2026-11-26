@@ -14,6 +14,7 @@
 // Lo único que se añade es el PUENTE: traducir un carrito del catálogo a la
 // lista de compras que el repartidor lee en el mostrador.
 
+import { productoVisible } from '../lib/campanas';
 import { prisma } from '../lib/prisma';
 import { domicilioDeTienda } from '../lib/tarifa-domicilio';
 import {
@@ -127,13 +128,19 @@ export async function comprarEnComercio(
   for (const item of dto.items) {
     const p = await prisma.product.findUnique({
       where: { id: item.productId },
-      select: { businessId: true, name: true, price: true, isAvailable: true },
+      select: {
+        businessId: true, name: true, price: true, isAvailable: true, campaignOnly: true,
+        campaign: { select: { title: true, active: true, startsAt: true, endsAt: true } },
+      },
     });
     if (!p || p.businessId !== negocio.id) {
       throw new CompraError('Uno de los productos ya no está en esta carta.');
     }
     if (!p.isAvailable) {
       throw new CompraError(`«${p.name}» está marcado como agotado.`);
+    }
+    if (!productoVisible(p)) {
+      throw new CompraError(`«${p.name}» era especial de una campaña y ya no está disponible.`);
     }
     lineas.push({
       nombre: p.name,

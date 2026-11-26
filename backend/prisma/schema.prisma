@@ -679,7 +679,17 @@ model Product {
   /// `ProductOption` haría las tres cosas mal a la vez.
   suggestAsAddon Boolean @default(false)
 
+  /// Campaña a la que el local inscribe este producto («Burger Show»).
+  /// Null = producto de siempre, que es como están todos los ya cargados.
+  campaignId     String?
+  /// Solo existe mientras la campaña está vigente: la hamburguesa especial
+  /// del evento aparece el día que abre y se va sola cuando termina, de la
+  /// carta y de la caja (`lib/campanas.ts`). Con false, es un producto de
+  /// siempre que además sale en la sección de la campaña.
+  campaignOnly   Boolean   @default(true)
+
   business       Business             @relation(fields: [businessId], references: [id])
+  campaign       Campaign?            @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   orderLines     OrderLine[]
   photos         ProductPhoto[]
   gruposOpciones ProductOptionGroup[]
@@ -688,7 +698,36 @@ model Product {
   // El escáner busca por código dentro de UN negocio: el mismo EAN puede
   // existir en varios comercios y cada uno tiene su producto y su precio.
   @@index([businessId, barcode])
+  @@index([campaignId])
   @@map("products")
+}
+
+/// Campaña de temporada que agrupa productos de varios locales en una sección
+/// propia de la app: «Burger Show», «Pizza Fest», «Día de la madre».
+///
+/// La crea el admin (nombre, ciudad, fechas); cada local inscribe SUS
+/// productos desde su portal. La vigencia se DERIVA de las fechas: no hay
+/// barrido que encienda o apague nada (`lib/campanas.ts`).
+model Campaign {
+  id        String   @id @default(cuid())
+  title     String
+  subtitle  String?
+  /// Plaza donde se anuncia. Null = en todas.
+  citySlug  String?
+  startsAt  DateTime
+  endsAt    DateTime
+  /// Antojo cuyo dibujo usa el anuncio en la app ('hamburguesas', 'pizza'…).
+  icon      String?
+  /// Color del anuncio (#RRGGBB). Null = el de la marca.
+  color     String?
+  /// Interruptor del admin: apagada no se anuncia aunque esté en fechas.
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  products Product[]
+
+  @@index([startsAt, endsAt])
+  @@map("campaigns")
 }
 
 // Grupo de opciones/variantes de un producto (ej: "Tamaño", "Adiciones",

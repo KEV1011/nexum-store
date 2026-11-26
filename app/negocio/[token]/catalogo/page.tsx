@@ -6,6 +6,7 @@ import { CartaFoto } from './CartaFoto'
 import RevisarCatalogo from './RevisarCatalogo'
 import { CsvImport } from './CsvImport'
 import { PortalTabs } from '../PortalTabs'
+import { AvisoCampanas, ElegirCampana, type Campana } from './CampanaDelProducto'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -110,6 +111,11 @@ interface Product {
   imageUrl?: string
   isAvailable: boolean
   suggestAsAddon?: boolean
+  /** Campaña en la que está inscrito («Burger Show»). */
+  campaignId?: string
+  /** Solo existe mientras la campaña rige. */
+  campaignOnly?: boolean
+  campaignTitle?: string
   /** Posición en la carta. El cliente la ve en este orden. */
   sortOrder: number
   images: ProductPhoto[]
@@ -428,6 +434,7 @@ function OptionsEditor({
 function ProductCard({
   token,
   product,
+  campanas,
   onChanged,
   onDeleted,
   onSubir,
@@ -435,6 +442,8 @@ function ProductCard({
 }: {
   token: string
   product: Product
+  /** Las campañas en las que el local puede inscribir productos. */
+  campanas: Campana[]
   onChanged: (p: Product) => void
   onDeleted: (id: string) => void
   /** null cuando ya es el primero de su sección. */
@@ -463,10 +472,13 @@ function ProductCard({
   const [eError, setEError] = useState<string | null>(null)
   const [eCategory, setECategory] = useState(product.category)
   const [eDescription, setEDescription] = useState(product.description)
+  const [eCampana, setECampana] = useState(product.campaignId ?? '')
+  const [eSoloEvento, setESoloEvento] = useState(product.campaignOnly ?? true)
 
-  type CuerpoPatch = Omit<Partial<Product>, 'compareAtPrice' | 'promoUntil'> & {
+  type CuerpoPatch = Omit<Partial<Product>, 'compareAtPrice' | 'promoUntil' | 'campaignId'> & {
     compareAtPrice?: string | number | null
     promoUntil?: string | null
+    campaignId?: string | null
   }
 
   const patch = async (body: CuerpoPatch) => {
@@ -502,6 +514,10 @@ function ProductCard({
       promoUntil: eHasta.trim() === '' ? null : new Date(eHasta).toISOString(),
       category: eCategory.trim() || 'General',
       description: eDescription.trim(),
+      // La campaña solo se manda si CAMBIÓ: reenviar la de un evento ya
+      // terminado haría que el servidor rechazara toda la edición.
+      ...(eCampana !== (product.campaignId ?? '') && { campaignId: eCampana || null }),
+      ...(eCampana && { campaignOnly: eSoloEvento }),
     })
     if (ok) setEditing(false)
   }
@@ -622,6 +638,14 @@ function ProductCard({
                 <input className={INPUT} list="cat-list" value={eCategory} onChange={(e) => setECategory(e.target.value)} maxLength={40} placeholder="Sección" />
               </div>
               <input className={INPUT} value={eDescription} onChange={(e) => setEDescription(e.target.value)} maxLength={140} placeholder="Descripción" />
+              <ElegirCampana
+                campanas={campanas}
+                campanaId={eCampana}
+                soloEvento={eSoloEvento}
+                onCampana={setECampana}
+                onSoloEvento={setESoloEvento}
+                {...(product.campaignId ? { actual: { id: product.campaignId, title: product.campaignTitle ?? 'Campaña' } } : {})}
+              />
               {eError && (
                 <p className="rounded-lg bg-red-50 border border-red-200 px-2 py-1.5 text-[11px] text-red-700">{eError}</p>
               )}
@@ -657,6 +681,11 @@ function ProductCard({
                 </p>
                 {product.description ? (
                   <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{product.description}</p>
+                ) : null}
+                {product.campaignTitle ? (
+                  <span className="mt-1 inline-block rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-700">
+                    {product.campaignTitle}{product.campaignOnly !== false ? ' · solo durante el evento' : ''}
+                  </span>
                 ) : null}
                 {/* Existencias y código: solo aparecen si el negocio los usa. */}
                 {product.stock !== undefined || product.barcode ? (
@@ -1053,6 +1082,11 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
   // portada, la marca y las adiciones.
   const [vista, setVista] = useState<'productos' | 'adiciones' | 'marca'>('productos')
   const [esAcompanamiento, setEsAcompanamiento] = useState(false)
+  // Campañas de temporada («Burger Show») en las que el local puede inscribir.
+  const [campanas, setCampanas] = useState<Campana[]>([])
+  const [campanaNuevo, setCampanaNuevo] = useState('')
+  const [soloEventoNuevo, setSoloEventoNuevo] = useState(true)
+  const [antesNuevo, setAntesNuevo] = useState('')
   const alCambiarBiblioteca = useCallback((g: Grupo[]) => {
     setBiblioteca(g)
     // Un grupo eliminado no puede seguir marcado en el formulario: se mandaría
@@ -1093,6 +1127,18 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
         if (json.success && json.data) setBiblioteca(json.data)
       } catch {
         // Sin biblioteca el formulario solo no ofrece las adiciones.
+      }
+    })()
+  }, [token])
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/business/${token}/campanas`, { cache: 'no-store' })
+        const json = (await res.json()) as { success: boolean; data?: Campana[] }
+        if (json.success && json.data) setCampanas(json.data)
+      } catch {
+        // Sin campañas el formulario no ofrece el selector: nunca bloquea.
       }
     })()
   }, [token])
@@ -1152,6 +1198,13 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
           // las adiciones que el dueño creyó ponerle.
           ...(perfil.opciones && adicionesNuevo.length > 0 && { optionGroupIds: adicionesNuevo }),
           ...(esAcompanamiento && { suggestAsAddon: true }),
+          // Inscrito en una campaña, con su precio normal para el tachado: la
+          // promoción termina sola con la campaña (lo decide el servidor).
+          ...(campanaNuevo && {
+            campaignId: campanaNuevo,
+            campaignOnly: soloEventoNuevo,
+            ...(antesNuevo.trim() && { compareAtPrice: antesNuevo.trim() }),
+          }),
         }),
       })
       const json = (await res.json()) as { success: boolean; data?: Product; error?: string }
@@ -1162,6 +1215,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
       setName(''); setPrice(''); setDescription(''); setCategory(CATEGORIES[0])
       setBarcode(''); setBrand(''); setStock(''); setModel(''); setWarranty('')
       setAdicionesNuevo([]); setEsAcompanamiento(false)
+      setCampanaNuevo(''); setSoloEventoNuevo(true); setAntesNuevo('')
       return null
     } catch {
       return 'No se pudo conectar con el servidor.'
@@ -1327,6 +1381,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
 
         {vista === 'productos' && (
         <>
+        <AvisoCampanas campanas={campanas} />
         {/* Alta */}
         <form onSubmit={createProduct} className={`${TARJETA} p-5 space-y-3`}>
           <h2 className="font-semibold text-slate-900 text-sm flex items-center gap-2">
@@ -1407,6 +1462,24 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
               </span>
             </span>
           </label>
+
+          <ElegirCampana
+            campanas={campanas}
+            campanaId={campanaNuevo}
+            soloEvento={soloEventoNuevo}
+            onCampana={setCampanaNuevo}
+            onSoloEvento={setSoloEventoNuevo}
+          />
+          {campanaNuevo ? (
+            <input
+              className={INPUT}
+              value={antesNuevo}
+              onChange={(e) => setAntesNuevo(e.target.value)}
+              inputMode="numeric"
+              maxLength={12}
+              placeholder="Precio normal, sin promoción (opcional, se muestra tachado)"
+            />
+          ) : null}
 
           {/* La ficha del producto. Va APARTE del inventario a propósito: un
               local de electrodomésticos que no cuente unidades sigue
@@ -1628,6 +1701,7 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
                       key={p.id}
                       token={token}
                       product={p}
+                      campanas={campanas}
                       onChanged={onChanged}
                       onDeleted={onDeleted}
                       onSubir={i === 0 ? null : () => void mover(p.id, -1)}

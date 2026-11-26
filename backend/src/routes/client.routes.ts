@@ -64,7 +64,9 @@ import { recogerEnTaquilla } from '../services/encomiendas.service';
 import {
   comprarEnComercio, CompraError,
 } from '../services/comercio-no-reclamado.service';
-import { getMunicipality } from '../services/municipality.service';
+import { getMunicipality, plazaDeCoordenadas } from '../services/municipality.service';
+import { campanasVigentesParaCliente } from '../services/campana.service';
+import { getCampaignShowcase } from '../services/business.service';
 import {
   searchPooledTrips,
   getPooledTripById,
@@ -550,6 +552,37 @@ router.get('/businesses/:id', async (req, res) => {
     res.json({ success: true, data: await getClientBusinessById(req.params['id']!) });
   } catch {
     res.status(404).json({ success: false, error: 'Business not found' });
+  }
+});
+
+// GET /client/campanas?lat=&lng= — las campañas que rigen AHORA en la plaza
+// del cliente («Burger Show»), con al menos un producto que enseñar. La app
+// las anuncia en el inicio; terminada la campaña, el anuncio se va solo.
+router.get('/campanas', async (req, res) => {
+  const lat = req.query['lat'] ? parseFloat(req.query['lat'] as string) : NaN;
+  const lng = req.query['lng'] ? parseFloat(req.query['lng'] as string) : NaN;
+  try {
+    const plaza = Number.isFinite(lat) && Number.isFinite(lng)
+      ? await plazaDeCoordenadas(lat, lng)
+      : null;
+    res.json({ success: true, data: await campanasVigentesParaCliente(plaza) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+  }
+});
+
+// GET /client/campanas/:id — los productos de la campaña de todos los locales.
+// Terminada (o inexistente) responde 404: la sección deja de existir.
+router.get('/campanas/:id', async (req, res) => {
+  try {
+    const items = await getCampaignShowcase(req.params['id']!);
+    if (!items) {
+      res.status(404).json({ success: false, error: 'Esta campaña ya terminó.' });
+      return;
+    }
+    res.json({ success: true, data: items });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
   }
 });
 

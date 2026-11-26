@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nexum_client/features/campanas/presentation/banner_campana.dart';
 import 'package:nexum_client/app/router/app_router.dart';
 import 'package:nexum_client/app/theme/zipa_icon.dart';
 import 'package:nexum_client/app/theme/zipa_tokens.dart';
@@ -158,6 +159,10 @@ class _BusinessesScreenState extends ConsumerState<BusinessesScreen> {
               // píxeles más abajo, sin que se moviera nada a la vista.
               if (explorando) ...[
                 const SliverToBoxAdapter(child: SizedBox(height: 18)),
+                // La campaña de temporada («Burger Show») va ARRIBA de todo:
+                // dura unos días y es justo lo que el local quiere que se vea.
+                // Sin campaña vigente no ocupa nada.
+                const SliverToBoxAdapter(child: BannersCampana()),
                 SliverToBoxAdapter(
                   child: _RejillaServicios(
                     onFiltrarRestaurantes: () => setState(

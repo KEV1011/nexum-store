@@ -103,6 +103,7 @@ export const PERMISOS_PERSONAL: readonly Regla[] = [
 
   // Encargado: catálogo, carta y marca.
   { metodo: 'GET', ruta: '/products', roles: ENCARGADO },
+  { metodo: 'GET', ruta: '/campanas', roles: ENCARGADO },
   { metodo: 'GET', ruta: '/products/csv-template', roles: ENCARGADO },
   { metodo: 'POST', ruta: '/products/csv-preview', roles: ENCARGADO },
   { metodo: 'POST', ruta: '/products/csv-import', roles: ENCARGADO },

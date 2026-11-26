@@ -1062,7 +1062,7 @@ describe('el panel actuando sobre lo que muestra', () => {
     };
     const crear = new Function(
       'document', 'window', 'fetch', 'localStorage', 'sessionStorage', 'setTimeout',
-      `${PANEL_JS}\n; return { verAtascados, loadDrivers, loadBusinesses, buscarClientes, verVehiculos, etiquetarTablas, minutosLegibles };`,
+      `${PANEL_JS}\n; return { verAtascados, loadDrivers, loadBusinesses, buscarClientes, verVehiculos, etiquetarTablas, minutosLegibles, loadCampanas };`,
     ) as (...a: unknown[]) => Record<string, (...a: unknown[]) => unknown>;
     const fn = crear(documentoFalso, {}, fetchFalso, almacen(), almacen(), () => 0);
     return { fn, el, documentoFalso };
@@ -1158,6 +1158,37 @@ describe('el panel actuando sobre lo que muestra', () => {
     const html = el['vehiculos-body']!.innerHTML;
     expect(html).toMatch(/eliminarVehiculo\('v1', this\.dataset\.nombre\)">Eliminar/);
     expect(html).toMatch(/eliminarVehiculo\('v2', this\.dataset\.nombre\)">Desactivar/);
+  });
+
+  it('las campañas se listan con sus fechas, sus inscritos y botones que funcionan', async () => {
+    const { fn, el } = montar({
+      '/admin/campanas': [
+        {
+          id: 'camp1', title: 'Burger Show', subtitle: 'Especiales del 27 al 3', citySlug: 'pamplona',
+          desde: '2026-11-27', hasta: '2026-12-03', icon: 'hamburguesas', color: '#E53935',
+          active: true, estado: 'vigente', productos: 12, locales: 5,
+        },
+        {
+          id: 'camp2', title: 'Pizza Fest', subtitle: null, citySlug: null,
+          desde: '2027-01-10', hasta: '2027-01-12', icon: 'pizza', color: null,
+          active: false, estado: 'apagada', productos: 0, locales: 0,
+        },
+      ],
+    }, ['campanas-body']);
+    fn['loadCampanas']!();
+    await esperar();
+    const html = el['campanas-body']!.innerHTML;
+    expect(html).toContain('Burger Show');
+    expect(html).toContain('2026-11-27 → 2026-12-03');
+    expect(html).toContain('12 productos · 5 locales');
+    expect(html).toContain('En curso');
+    expect(html).toContain('Todas');
+    // Comillas reales en el onclick: con \' mal escapado el botón no hace nada.
+    expect(html).toContain("editarCampana('camp1')");
+    expect(html).toContain("encenderCampanaAdmin('camp1', false)");
+    expect(html).toContain("encenderCampanaAdmin('camp2', true)");
+    expect(html).not.toContain('undefined');
+    expect(html).not.toContain('null');
   });
 
   it('las tablas se envuelven y cada celda lleva su encabezado (modo tarjeta en el celular)', () => {
