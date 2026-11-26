@@ -10,6 +10,7 @@
 // Regla que no se negocia: **el precio lo decide siempre el servidor.** Lo que
 // manda el cliente es qué productos y cuántos.
 
+import { productoVisible } from '../lib/campanas';
 import { prisma } from '../lib/prisma';
 import { resolverOpciones, sanearNota } from '../lib/order-options';
 import { precioVigente } from '../lib/promo-producto';
@@ -75,6 +76,7 @@ export async function resolverLineasDePedido(
             group: { include: { options: { orderBy: { sortOrder: 'asc' } } } },
           },
         },
+        campaign: { select: { title: true, active: true, startsAt: true, endsAt: true } },
       },
     });
     // La pertenencia al negocio se comprueba AQUÍ: es lo que impide pedir en un
@@ -84,6 +86,13 @@ export async function resolverLineasDePedido(
     }
     if (!producto.isAvailable) {
       throw new Error(`${producto.name} no está disponible en este momento.`);
+    }
+    // Lo especial de una campaña solo se vende mientras la campaña rige: la
+    // MISMA regla que decide si la carta lo enseña (`lib/campanas.ts`).
+    if (!productoVisible(producto)) {
+      throw new Error(
+        `${producto.name} era especial de «${producto.campaign?.title ?? 'una campaña'}» y ya no está disponible.`,
+      );
     }
     // stock null = el negocio no controla inventario (caso restaurante).
     if (producto.stock !== null && producto.stock < line.quantity) {

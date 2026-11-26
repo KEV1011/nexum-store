@@ -611,6 +611,12 @@ export interface ProductDTO {
   brand?: string;
   model?: string;
   warrantyMonths?: number | null;
+  /** Campaña en la que está inscrito. Ausente = producto de siempre. */
+  campaignId?: string;
+  /** Solo existe mientras la campaña rige (especial del evento). */
+  campaignOnly?: boolean;
+  /** Nombre de la campaña, para la etiqueta del portal. */
+  campaignTitle?: string;
 }
 
 // Payload para reemplazar TODAS las opciones de un producto de una vez (el
@@ -664,6 +670,13 @@ export interface CreateProductDTO {
    * se le propone al cliente antes de cerrar el carrito.
    */
   suggestAsAddon?: boolean;
+  /**
+   * Inscribirlo en una campaña («Burger Show»). Null explícito = sacarlo.
+   * Debe ser una campaña que no haya terminado y de la ciudad del local.
+   */
+  campaignId?: string | null;
+  /** Solo existe mientras la campaña rige. Por defecto, sí. */
+  campaignOnly?: boolean;
 }
 
 export interface UpdateProductDTO {
@@ -696,6 +709,13 @@ export interface UpdateProductDTO {
    * se le propone al cliente antes de cerrar el carrito.
    */
   suggestAsAddon?: boolean;
+  /**
+   * Inscribirlo en una campaña («Burger Show»). Null explícito = sacarlo.
+   * Debe ser una campaña que no haya terminado y de la ciudad del local.
+   */
+  campaignId?: string | null;
+  /** Solo existe mientras la campaña rige. Por defecto, sí. */
+  campaignOnly?: boolean;
 }
 
 export interface BusinessPublicDTO {

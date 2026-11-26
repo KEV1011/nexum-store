@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:nexum_client/features/campanas/data/campanas_api.dart';
+import 'package:nexum_client/features/campanas/presentation/campana_screen.dart';
 import 'package:nexum_client/features/mesa/presentation/screens/escanear_mesa_screen.dart';
 import 'package:nexum_client/features/mesa/presentation/screens/mesa_carta_screen.dart';
 import 'package:nexum_client/features/mesa/presentation/screens/mesa_pedido_screen.dart';
@@ -143,6 +145,11 @@ abstract final class AppRoutes {
   }
   static String orderPath(String id) => '/order/$id';
 
+  /// Sección de una campaña de temporada («Burger Show»).
+  static const String campana = '/campana/:id';
+  static String campanaPath(String id) =>
+      '/campana/${Uri.encodeComponent(id)}';
+
   // Pedir en la mesa del local (la misma carta del QR).
   static const String mesaCarta = '/carta/:codigo';
   static const String mesaPedido = '/carta/:codigo/pedido/:id';
@@ -239,6 +246,18 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           );
         },
+      ),
+      GoRoute(
+        path: AppRoutes.campana,
+        pageBuilder: (context, state) => AppTransitions.slideLeft(
+          pageKey: state.pageKey,
+          child: CampanaScreen(
+            campanaId: state.pathParameters['id'] ?? '',
+            // `is` y no `as`: un extra de otra forma abre la sección igual,
+            // con la cabecera genérica, en vez de reventar la navegación.
+            campana: state.extra is Campana ? state.extra! as Campana : null,
+          ),
+        ),
       ),
       // La mesa: llega también por el enlace del QR (App Links) cuando la app
       // está instalada — por eso la ruta es la MISMA que la de la web.

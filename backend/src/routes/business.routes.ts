@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { campanasParaNegocio } from '../services/campana.service';
 import { mensajeSinPermiso, NOMBRE_DEL_ROL, rutaPermitida } from '../lib/permisos-portal';
 import {
   crearPersonal,
@@ -730,6 +731,20 @@ router.get('/:token/products', async (req: Request, res: Response): Promise<void
     res.status(200).json({ success: true, data: products });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'No se pudo cargar el catálogo';
+    res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
+  }
+});
+
+// GET /business/:token/campanas — las campañas en las que el local puede
+// inscribir productos («Burger Show»): encendidas, sin terminar y de su
+// ciudad. Las próximas incluidas: la hamburguesa especial se prepara ANTES.
+router.get('/:token/campanas', async (req: Request, res: Response): Promise<void> => {
+  const { token } = req.params as { token: string };
+  try {
+    const business = await getBusinessService().getBusinessByToken(token);
+    res.status(200).json({ success: true, data: await campanasParaNegocio(business.id) });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'No se pudieron cargar las campañas';
     res.status(message.includes('not found') ? 404 : 400).json({ success: false, error: message });
   }
 });

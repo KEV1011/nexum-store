@@ -1,4 +1,11 @@
 import { listarComerciosMalUbicados } from '../services/ubicacion-comercio.service';
+import {
+  CampanaError,
+  actualizarCampana,
+  crearCampana,
+  encenderCampana,
+  listarCampanasAdmin,
+} from '../services/campana.service';
 import { listarReportesCarta, reporteCartaCompleto } from '../services/carta-reporte.service';
 import { Router, Request, Response, NextFunction } from 'express';
 import { esTipoAtascado } from '../lib/servicio-atascado';
@@ -874,6 +881,51 @@ router.post('/municipalities/:slug/commission', async (req: Request, res: Respon
   }
 });
 
+// ─── Campañas de temporada («Burger Show») ───────────────────────────────────
+//
+// El admin crea la campaña (nombre, ciudad, fechas); cada local inscribe sus
+// productos desde su portal y la app la anuncia mientras rige.
+
+router.get('/campanas', async (_req: Request, res: Response): Promise<void> => {
+  res.json({ success: true, data: await listarCampanasAdmin() });
+});
+
+function _errorDeCampana(res: Response, err: unknown): void {
+  if (err instanceof CampanaError) {
+    res.status(400).json({ success: false, error: err.message });
+    return;
+  }
+  res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Error' });
+}
+
+// POST /admin/campanas { title, subtitle?, citySlug?, desde, hasta, icon?, color? }
+router.post('/campanas', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.status(201).json({ success: true, data: await crearCampana(req.body ?? {}) });
+  } catch (err) {
+    _errorDeCampana(res, err);
+  }
+});
+
+// POST /admin/campanas/:id — reemplaza todos los datos de la campaña.
+router.post('/campanas/:id', async (req: Request, res: Response): Promise<void> => {
+  try {
+    res.json({ success: true, data: await actualizarCampana(req.params['id']!, req.body ?? {}) });
+  } catch (err) {
+    _errorDeCampana(res, err);
+  }
+});
+
+// POST /admin/campanas/:id/activar { active } — encender/apagar sin borrar.
+router.post('/campanas/:id/activar', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const active = req.body?.['active'] === true;
+    res.json({ success: true, data: await encenderCampana(req.params['id']!, active) });
+  } catch (err) {
+    _errorDeCampana(res, err);
+  }
+});
+
 // POST /admin/operators/:id/suspend
 router.post('/operators/:id/suspend', async (req: Request, res: Response): Promise<void> => {
   const ok = await setOperatorStatus(req.params['id']!, 'SUSPENDED');
@@ -1469,6 +1521,28 @@ const PANEL_HTML = `<!DOCTYPE html>
     </section>
 
     <section id="tab-promos" style="display:none">
+      <h3 style="margin:4px 0 2px">Campañas de temporada</h3>
+      <p class="muted" style="margin:0 0 8px">Una sección propia en el inicio de la app (por ejemplo «Burger Show»). Cada local inscribe sus productos desde su portal; los especiales solo existen entre estas fechas y se van solos al terminar.</p>
+      <form class="inline" id="camp-form" onsubmit="guardarCampana(event)">
+        <div><label>Nombre</label><input id="c-title" placeholder="Burger Show" maxlength="40" required /></div>
+        <div><label>Frase (opcional)</label><input id="c-sub" placeholder="Hamburguesas especiales del 27 al 3" maxlength="90" /></div>
+        <div><label>Ciudad</label><select id="c-city"><option value="">Todas</option></select></div>
+        <div><label>Desde</label><input id="c-desde" type="date" required /></div>
+        <div><label>Hasta</label><input id="c-hasta" type="date" required /></div>
+        <div><label>Dibujo</label><select id="c-icon">
+          <option value="hamburguesas">Hamburguesa</option><option value="pizza">Pizza</option><option value="pollo">Pollo</option>
+          <option value="perros">Perro caliente</option><option value="salchipapas">Salchipapa</option><option value="asados">Asado</option>
+          <option value="mexicana">Mexicana</option><option value="sushi">Sushi</option><option value="postres">Postre</option>
+          <option value="helados">Helado</option><option value="cafe">Café</option><option value="arepas">Arepa</option>
+        </select></div>
+        <div><label>Color</label><input id="c-color" type="color" value="#e53935" /></div>
+        <div><button class="btn-sm" id="c-guardar" type="submit" style="padding:10px">Crear campaña</button>
+          <button class="btn-sm" id="c-cancelar" type="button" style="padding:10px;display:none" onclick="limpiarCampana()">Cancelar</button></div>
+      </form>
+      <table><thead><tr><th>Campaña</th><th>Ciudad</th><th>Fechas</th><th>Inscritos</th><th>Estado</th><th></th></tr></thead>
+      <tbody id="campanas-body"><tr><td colspan="6" class="empty">Cargando…</td></tr></tbody></table>
+
+      <h3 style="margin:22px 0 8px">Cupones</h3>
       <form class="inline" onsubmit="createPromo(event)">
         <div><label>Código</label><input id="p-code" placeholder="BIENVENIDO20" required /></div>
         <div><label>Tipo</label><select id="p-type"><option value="PERCENT">% Porcentaje</option><option value="FIXED">$ Fijo (COP)</option></select></div>
@@ -2756,7 +2830,84 @@ function loadSos() {
   }).catch((e) => showMsg(e.message, true));
 }
 
+// ─── Campañas de temporada ───────────────────────────────────────────────
+let CAMPANAS = {};
+let EDITANDO_CAMPANA = '';
+const ESTADO_CAMPANA = { proxima: ['Próxima', 'badge-PENDING'], vigente: ['En curso', 'badge-ok'], terminada: ['Terminada', 'badge-OFFLINE'], apagada: ['Apagada', 'badge-OFFLINE'] };
+
+function loadCampanas() {
+  const sel = document.getElementById('c-city');
+  if (sel && sel.options.length <= 1) {
+    api('/admin/municipalities').then((rows) => {
+      sel.innerHTML = '<option value="">Todas</option>' + rows.map((m) => '<option value="' + esc(m.slug) + '">' + esc(m.name) + '</option>').join('');
+      if (!EDITANDO_CAMPANA) sel.value = rows.some((m) => m.slug === 'pamplona') ? 'pamplona' : '';
+    }).catch(() => {});
+  }
+  api('/admin/campanas').then((rows) => {
+    CAMPANAS = {};
+    for (const c of rows) CAMPANAS[c.id] = c;
+    const tb = document.getElementById('campanas-body');
+    if (!rows.length) { tb.innerHTML = '<tr><td colspan="6" class="empty">Sin campañas aún.</td></tr>'; return; }
+    tb.innerHTML = rows.map((c) => {
+      const e = ESTADO_CAMPANA[c.estado] || [c.estado, ''];
+      return '<tr><td><strong>' + esc(c.title) + '</strong>' + (c.subtitle ? '<br><span class="muted">' + esc(c.subtitle) + '</span>' : '') +
+        '</td><td>' + esc(c.citySlug || 'Todas') + '</td><td>' + esc(c.desde) + ' → ' + esc(c.hasta) +
+        '</td><td>' + c.productos + ' productos · ' + c.locales + ' locales' +
+        '</td><td><span class="badge ' + e[1] + '">' + e[0] + '</span></td><td>' +
+        '<button class="btn-sm" onclick="editarCampana(\\'' + c.id + '\\')">Editar</button> ' +
+        '<button class="btn-sm" onclick="encenderCampanaAdmin(\\'' + c.id + '\\', ' + !c.active + ')">' + (c.active ? 'Apagar' : 'Encender') + '</button></td></tr>';
+    }).join('');
+  }).catch((e) => showMsg(e.message, true));
+}
+
+function limpiarCampana() {
+  EDITANDO_CAMPANA = '';
+  document.getElementById('camp-form').reset();
+  document.getElementById('c-guardar').textContent = 'Crear campaña';
+  document.getElementById('c-cancelar').style.display = 'none';
+}
+
+function editarCampana(id) {
+  const c = CAMPANAS[id];
+  if (!c) return;
+  EDITANDO_CAMPANA = id;
+  document.getElementById('c-title').value = c.title;
+  document.getElementById('c-sub').value = c.subtitle || '';
+  document.getElementById('c-city').value = c.citySlug || '';
+  document.getElementById('c-desde').value = c.desde;
+  document.getElementById('c-hasta').value = c.hasta;
+  document.getElementById('c-icon').value = c.icon || 'hamburguesas';
+  document.getElementById('c-color').value = (c.color || '#e53935').toLowerCase();
+  document.getElementById('c-guardar').textContent = 'Guardar cambios';
+  document.getElementById('c-cancelar').style.display = 'inline-block';
+  document.getElementById('camp-form').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function guardarCampana(ev) {
+  ev.preventDefault();
+  const datos = {
+    title: document.getElementById('c-title').value,
+    subtitle: document.getElementById('c-sub').value,
+    citySlug: document.getElementById('c-city').value,
+    desde: document.getElementById('c-desde').value,
+    hasta: document.getElementById('c-hasta').value,
+    icon: document.getElementById('c-icon').value,
+    color: document.getElementById('c-color').value,
+    active: EDITANDO_CAMPANA ? !!(CAMPANAS[EDITANDO_CAMPANA] && CAMPANAS[EDITANDO_CAMPANA].active) : true,
+  };
+  const ruta = EDITANDO_CAMPANA ? '/admin/campanas/' + EDITANDO_CAMPANA : '/admin/campanas';
+  api(ruta, { method: 'POST', body: JSON.stringify(datos) })
+    .then(() => { showMsg(EDITANDO_CAMPANA ? 'Campaña guardada.' : 'Campaña creada. Los locales ya pueden inscribir productos desde su portal.', false); limpiarCampana(); loadCampanas(); })
+    .catch((e) => showMsg(e.message, true));
+}
+
+function encenderCampanaAdmin(id, active) {
+  api('/admin/campanas/' + id + '/activar', { method: 'POST', body: JSON.stringify({ active }) })
+    .then(() => loadCampanas()).catch((e) => showMsg(e.message, true));
+}
+
 function loadPromos() {
+  loadCampanas();
   api('/admin/promos').then((rows) => {
     const tb = document.getElementById('promos-body');
     if (!rows.length) { tb.innerHTML = '<tr><td colspan="8" class="empty">Sin cupones aún.</td></tr>'; return; }

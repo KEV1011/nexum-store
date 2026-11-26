@@ -32,6 +32,7 @@ import {
   LARGO_FRASE, MAX_FOTOS_LOCAL, paletaDeLocal, saneaColorMarca,
 } from '../lib/marca-local';
 import { precioVigente, saneaFinDePromo } from '../lib/promo-producto';
+import { estadoCampana, filtroProductosVisibles, ordenarItemsDeCampana } from '../lib/campanas';
 import { etiquetaDeGrupo, saneaGrupo } from '../lib/texto-opciones';
 import { mismoNombreDeGrupo, suenaAAcompanamiento } from '../lib/carta-rol';
 import { sugerenciaDeCodigo, type SugerenciaDeCodigo } from '../lib/sugerencia-codigo';
@@ -384,6 +385,9 @@ function _productToDTO(p: {
   warrantyMonths?: number | null;
   photos?: { id: string; url: string }[];
   suggestAsAddon?: boolean;
+  campaignId?: string | null;
+  campaignOnly?: boolean;
+  campaign?: { title: string } | null;
   gruposOpciones?: {
     group: {
       id: string;
@@ -427,6 +431,13 @@ function _productToDTO(p: {
     warrantyMonths: p.warrantyMonths ?? undefined,
     images: (p.photos ?? []).map((ph) => ({ id: ph.id, url: ph.url })),
     suggestAsAddon: p.suggestAsAddon ?? false,
+    ...(p.campaignId
+      ? {
+          campaignId: p.campaignId,
+          campaignOnly: p.campaignOnly ?? true,
+          ...(p.campaign ? { campaignTitle: p.campaign.title } : {}),
+        }
+      : {}),
     pareceAcompanamiento: suenaAAcompanamiento(p.name, p.category ?? ''),
     optionGroups: (p.gruposOpciones ?? []).map(({ group: g }) => ({
       id: g.id,
@@ -559,6 +570,7 @@ async function _conMasPedido(businessId: string, productos: ProductDTO[]): Promi
 // Incluir galería y grupos de opciones ordenados en cada consulta de producto.
 const _photoInclude = {
   photos: { orderBy: { sortOrder: 'asc' as const } },
+  campaign: { select: { title: true } },
   // Los grupos cuelgan del NEGOCIO y el plato los adjunta, así que se leen por
   // el puente. El orden es el del plato (`ProductOptionGroup.sortOrder`), que
   // puede no ser el de la biblioteca: en una hamburguesa el tamaño va primero
@@ -573,7 +585,9 @@ const _photoInclude = {
 
 export async function getProductsForBusiness(businessId: string): Promise<ProductDTO[]> {
   const products = await prisma.product.findMany({
-    where: { businessId, isAvailable: true },
+    // Lo especial de una campaña que no rige NO existe para el cliente
+    // (`lib/campanas.ts`): la misma regla que aplica la caja.
+    where: { businessId, isAvailable: true, ...filtroProductosVisibles() },
     orderBy: { createdAt: 'asc' },
     include: _photoInclude,
   });
@@ -1195,6 +1209,32 @@ export async function applyProductImport(
   return { creados, actualizados, idsNuevos };
 }
 
+/**
+ * La campaña en la que el local quiere inscribir un producto, comprobada.
+ *
+ * Tiene que existir, estar encendida, no haber terminado (inscribir en una
+ * campaña vencida crearía un producto que nace invisible y el dueño creería
+ * que el portal no guardó) y ser de SU ciudad: una campaña de Cúcuta no se
+ * anuncia en Pamplona, y el producto no saldría en ninguna sección.
+ */
+async function _campanaParaInscribir(
+  businessId: string,
+  campaignId: string,
+): Promise<{ id: string; endsAt: Date }> {
+  const [c, biz] = await Promise.all([
+    prisma.campaign.findUnique({ where: { id: campaignId } }),
+    prisma.business.findUnique({ where: { id: businessId }, select: { citySlug: true } }),
+  ]);
+  if (!c) throw new Error('Esa campaña no existe.');
+  const estado = estadoCampana(c);
+  if (estado === 'apagada') throw new Error(`La campaña «${c.title}» no está activa.`);
+  if (estado === 'terminada') throw new Error(`La campaña «${c.title}» ya terminó.`);
+  if (c.citySlug && c.citySlug !== biz?.citySlug) {
+    throw new Error(`La campaña «${c.title}» es de otra ciudad.`);
+  }
+  return { id: c.id, endsAt: c.endsAt };
+}
+
 export async function createBusinessProduct(
   businessId: string,
   dto: CreateProductDTO,
@@ -1217,6 +1257,15 @@ export async function createBusinessProduct(
     if (mios !== grupos.length) throw new Error('Una de las adiciones no es de este negocio.');
   }
 
+  const campana = typeof dto.campaignId === 'string' && dto.campaignId
+    ? await _campanaParaInscribir(businessId, dto.campaignId)
+    : null;
+  // Lanza con el motivo si el «antes» está al revés o es increíble.
+  const antes = saneaPrecioAntes(dto.price, dto.compareAtPrice);
+  // Una promoción de campaña termina con la campaña si el dueño no dijo otra
+  // cosa: si no, el precio rebajado del Burger Show seguiría en enero.
+  const finPromo = dto.promoUntil ?? (campana && antes !== null ? campana.endsAt.toISOString() : null);
+
   const p = await prisma.product.create({
     data: {
       ...(grupos.length > 0 && {
@@ -1225,11 +1274,11 @@ export async function createBusinessProduct(
       businessId,
       name,
       price: dto.price,
-      // Lanza con el motivo si el «antes» está al revés o es increíble.
-      compareAtPrice: saneaPrecioAntes(dto.price, dto.compareAtPrice),
+      compareAtPrice: antes,
       // Y una fecha ya pasada se rechaza: guardarla dejaría una promoción que
       // nace muerta y el dueño creería que el portal no guardó.
-      promoUntil: saneaFinDePromo(dto.promoUntil),
+      promoUntil: saneaFinDePromo(finPromo),
+      ...(campana && { campaignId: campana.id, campaignOnly: dto.campaignOnly ?? true }),
       description: limpiarTextoDeCarta(dto.description ?? '') || null,
       category: limpiarTextoDeCarta(dto.category ?? '') || 'General',
       imageUrl: dto.imageUrl ?? null,
@@ -1252,11 +1301,27 @@ export async function updateBusinessProduct(
   if (!existing || existing.businessId !== businessId) {
     throw new Error('Producto no encontrado.');
   }
+  const campana = typeof dto.campaignId === 'string' && dto.campaignId
+    ? await _campanaParaInscribir(businessId, dto.campaignId)
+    : null;
+  // Recién inscrito, con «antes» y sin fecha de fin: la promoción termina con
+  // la campaña (ver `createBusinessProduct`).
+  const quedaEnPromo = dto.compareAtPrice !== undefined
+    ? dto.compareAtPrice !== null && dto.compareAtPrice !== ''
+    : existing.compareAtPrice !== null;
+  const finPromo = dto.promoUntil !== undefined
+    ? dto.promoUntil
+    : campana && quedaEnPromo && !existing.promoUntil
+      ? campana.endsAt.toISOString()
+      : undefined;
   const p = await prisma.product.update({
     where: { id: productId },
     data: {
       ...(dto.name !== undefined && { name: nombreDeProducto(dto.name) }),
-      ...(dto.promoUntil !== undefined && { promoUntil: saneaFinDePromo(dto.promoUntil) }),
+      ...(finPromo !== undefined && { promoUntil: saneaFinDePromo(finPromo) }),
+      ...(dto.campaignId === null && { campaignId: null }),
+      ...(campana && { campaignId: campana.id }),
+      ...(dto.campaignOnly !== undefined && { campaignOnly: dto.campaignOnly === true }),
       ...(dto.price !== undefined && { price: dto.price }),
       // Se valida contra el precio que va a QUEDAR, no contra el que había:
       // bajar el precio sin tocar el «antes» debe seguir siendo coherente.
@@ -1594,7 +1659,8 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
     where: { isOpen: true },
     include: {
       products: {
-        where: { isAvailable: true },
+        // Lo especial de una campaña que no rige no existe para el cliente.
+        where: { isAvailable: true, ...filtroProductosVisibles() },
         // La carta se lee en un orden concreto: entradas antes que postres.
         // Por fecha de creación salían mezcladas.
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
@@ -1626,7 +1692,8 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     where: { id },
     include: {
       products: {
-        where: { isAvailable: true },
+        // Lo especial de una campaña que no rige no existe para el cliente.
+        where: { isAvailable: true, ...filtroProductosVisibles() },
         // La carta se lee en un orden concreto: entradas antes que postres.
         // Por fecha de creación salían mezcladas.
         orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
@@ -1985,4 +2052,56 @@ export async function getSalesReportForBusiness(
     rango.gte,
     rango.lte,
   );
+}
+
+// ─── Vitrina de una campaña («Burger Show») ──────────────────────────────────
+
+export interface ItemCampanaDTO {
+  product: ProductDTO;
+  business: {
+    id: string;
+    name: string;
+    imageUrl?: string;
+    logoUrl?: string;
+    /** Recibiendo pedidos ahora (la misma regla que la vitrina normal). */
+    isOpen: boolean;
+    cerradoMotivo?: string;
+  };
+}
+
+/**
+ * Los productos de UNA campaña, de todos los locales abiertos, en el orden de
+ * `ordenarItemsDeCampana`: lo que se puede pedir ya y con promoción, primero.
+ * Solo mientras la campaña rige: terminada, la sección no existe.
+ */
+export async function getCampaignShowcase(
+  campaignId: string,
+  ahora: Date = new Date(),
+): Promise<ItemCampanaDTO[] | null> {
+  const c = await prisma.campaign.findUnique({ where: { id: campaignId } });
+  if (!c || estadoCampana(c, ahora) !== 'vigente') return null;
+  const productos = await prisma.product.findMany({
+    where: { campaignId, isAvailable: true, business: { isOpen: true } },
+    include: { ..._photoInclude, business: true },
+  });
+  const items = productos.map((p) => {
+    const dto = _productToDTO(p);
+    const v = _estadoVitrina(p.business);
+    return {
+      product: dto,
+      business: {
+        id: p.business.id,
+        name: p.business.name,
+        ...(p.business.imageUrl ? { imageUrl: p.business.imageUrl } : {}),
+        ...(p.business.logoUrl ? { logoUrl: p.business.logoUrl } : {}),
+        isOpen: v.isOpen,
+        ...(v.cerradoMotivo ? { cerradoMotivo: v.cerradoMotivo } : {}),
+      },
+      recibiendo: v.isOpen,
+      descuentoPct: dto.descuentoPct,
+      precio: dto.price,
+      nombre: dto.name,
+    };
+  });
+  return ordenarItemsDeCampana(items).map(({ product, business }) => ({ product, business }));
 }
