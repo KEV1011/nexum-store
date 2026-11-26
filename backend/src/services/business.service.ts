@@ -16,6 +16,7 @@ import {
   BusinessCategory,
 } from '../types';
 import { prisma } from '../lib/prisma';
+import { domicilioDeTienda, domicilioFijo } from '../lib/tarifa-domicilio';
 import { maskPhone } from './safe-contact.service';
 import { normalizeColombianPhone } from './auth.service';
 import { codigoEsLlaveMaestra } from './otp.service';
@@ -1295,6 +1296,12 @@ export async function updateBusinessCover(businessId: string, imageUrl: string):
 // ─── Ajustes del negocio (perfil + vitrina) ───────────────────────────────────
 
 export interface BusinessSettingsView {
+  /**
+   * El domicilio que cobra ZIPA a todos los pedidos, o null si manda el que
+   * pone cada comercio. Con un valor, el portal enseña el campo bloqueado: si
+   * el dueño lo viera editable creería que cobra lo que escribió.
+   */
+  domicilioFijo: number | null;
   name: string;
   address: string;
   phone: string;
@@ -1341,6 +1348,7 @@ function _settingsView(b: {
     phone: b.phone ?? '',
     whatsapp: b.whatsapp ?? '',
     deliveryFee: b.deliveryFee,
+    domicilioFijo: domicilioFijo(),
     etaMinutes: b.etaMinutes,
     acceptingOrders: b.acceptingOrders,
     openingHours: b.openingHours ?? '',
@@ -1603,7 +1611,8 @@ export async function getAllBusinessesPublic(): Promise<BusinessPublicDTO[]> {
     rating: b.ratingCount > 0 ? b.rating : null,
     ratingCount: b.ratingCount,
     etaMinutes: b.etaMinutes,
-    deliveryFee: b.deliveryFee,
+    // El que se cobra, no el que puso el local (ver `lib/tarifa-domicilio`).
+    deliveryFee: domicilioDeTienda(b.deliveryFee),
     // "Abierto" para el cliente = la vitrina está recibiendo pedidos.
     ..._estadoVitrina(b),
     imageUrl: b.imageUrl ?? undefined,
@@ -1634,7 +1643,8 @@ export async function getBusinessPublicById(id: string): Promise<BusinessPublicD
     rating: b.ratingCount > 0 ? b.rating : null,
     ratingCount: b.ratingCount,
     etaMinutes: b.etaMinutes,
-    deliveryFee: b.deliveryFee,
+    // El que se cobra, no el que puso el local (ver `lib/tarifa-domicilio`).
+    deliveryFee: domicilioDeTienda(b.deliveryFee),
     ..._estadoVitrina(b),
     imageUrl: b.imageUrl ?? undefined,
     citySlug: b.citySlug,

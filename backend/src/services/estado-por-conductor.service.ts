@@ -27,8 +27,13 @@
 import { prisma } from '../lib/prisma';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
 import type { ClientErrandDTO, ClientOrderSummaryDTO, ErrandStatus } from '../types';
-import { updateOrderStatusByDriver, type DriverOrderStatus } from './client.service';
-import { getClientErrandSnapshot, updateErrandStatus } from './errand.service';
+import {
+  liquidacionDePedido,
+  updateOrderStatusByDriver,
+  type DriverOrderStatus,
+  type LiquidacionServicio,
+} from './client.service';
+import { getClientErrandSnapshot, liquidacionDeMandado, updateErrandStatus } from './errand.service';
 
 /** Estados que el repartidor puede fijar en un pedido. */
 export type { DriverOrderStatus };
@@ -63,7 +68,7 @@ export async function driverUpdateOrderStatus(
   orderId: string,
   status: DriverOrderStatus,
   pin?: string,
-): Promise<ClientOrderSummaryDTO> {
+): Promise<{ order: ClientOrderSummaryDTO; settlement?: LiquidacionServicio }> {
   // Se mira ANTES de pedir el PIN: si el cliente ya canceló, decirle al
   // repartidor «el PIN no coincide» lo dejaría pidiéndole otro código a
   // alguien que ya no está esperando nada.
@@ -87,7 +92,15 @@ export async function driverUpdateOrderStatus(
   if (order.status === 'cancelled') {
     throw new EstadoServicioError('Este pedido fue cancelado. No hace falta entregarlo.', 409);
   }
-  return order;
+  // Al entregar, la liquidación viaja en la respuesta para que el resumen del
+  // repartidor enseñe lo que de verdad le pagamos, no su estimación. También
+  // en el reintento de un «entregado» ya hecho: la cifra es la misma.
+  if (order.status !== 'delivered') return { order };
+  const fila = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { deliveryFee: true, operatorId: true, driverId: true, deliveryLat: true, deliveryLng: true },
+  });
+  return fila ? { order, settlement: await liquidacionDePedido(fila) } : { order };
 }
 
 /**
@@ -101,7 +114,7 @@ export async function driverUpdateErrandStatus(
   status: EstadoDeMandado,
   actualCost?: number,
   pin?: string,
-): Promise<ClientErrandDTO> {
+): Promise<{ errand: ClientErrandDTO; settlement?: LiquidacionServicio }> {
   const previo = await prisma.errand.findUnique({
     where: { id: errandId },
     select: { driverId: true, status: true },
@@ -126,13 +139,26 @@ export async function driverUpdateErrandStatus(
     if (real.status === 'cancelled') {
       throw new EstadoServicioError('Este mandado fue cancelado. No hace falta entregarlo.', 409);
     }
-    return real;
+    return _conLiquidacionDeMandado(errandId, real);
   }
 
   // El socket lo ponía en línea sin mirar si llevaba otro servicio; por aquí
   // se usa la regla común, que respeta el encadenado.
   if (status === 'delivered') await liberarConductorSiNoTieneMas(driverId);
-  return dto;
+  return _conLiquidacionDeMandado(errandId, dto);
+}
+
+/** Igual que en el pedido: al estar entregado, la liquidación va en la respuesta. */
+async function _conLiquidacionDeMandado(
+  errandId: string,
+  errand: ClientErrandDTO,
+): Promise<{ errand: ClientErrandDTO; settlement?: LiquidacionServicio }> {
+  if (errand.status !== 'delivered') return { errand };
+  const fila = await prisma.errand.findUnique({
+    where: { id: errandId },
+    select: { serviceFee: true, operatorId: true, driverId: true, pickupLat: true, pickupLng: true },
+  });
+  return fila ? { errand, settlement: await liquidacionDeMandado(fila) } : { errand };
 }
 
 async function _mandadoTalComoEsta(errandId: string): Promise<ClientErrandDTO> {

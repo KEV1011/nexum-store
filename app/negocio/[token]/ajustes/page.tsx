@@ -37,6 +37,12 @@ interface Settings {
   phone: string
   whatsapp: string
   deliveryFee: number
+  /**
+   * El domicilio que cobra ZIPA a todos los pedidos (null = manda el del
+   * local). Con valor, el campo de abajo va bloqueado: el dueño no puede creer
+   * que cobra lo que escribió si el cliente paga otra cosa.
+   */
+  domicilioFijo?: number | null
   etaMinutes: number
   promoMinAmount?: number | null
   promoDiscount?: number | null
@@ -435,13 +441,25 @@ export default function AjustesPage({ params }: { params: Promise<{ token: strin
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Domicilio (COP)</label>
-                  <input
-                    className={INPUT}
-                    value={String(settings.deliveryFee)}
-                    onChange={(e) => set({ deliveryFee: Number(e.target.value.replace(/[^\d]/g, '')) })}
-                    inputMode="numeric"
-                    maxLength={9}
-                  />
+                  {settings.domicilioFijo != null ? (
+                    <>
+                      <input
+                        className={`${INPUT} bg-slate-50 text-slate-500`}
+                        value={formatCOP(settings.domicilioFijo)}
+                        readOnly
+                        aria-readonly="true"
+                      />
+                      <p className="mt-1 text-xs text-slate-500">Lo fija ZIPA, igual para todos los locales.</p>
+                    </>
+                  ) : (
+                    <input
+                      className={INPUT}
+                      value={String(settings.deliveryFee)}
+                      onChange={(e) => set({ deliveryFee: Number(e.target.value.replace(/[^\d]/g, '')) })}
+                      inputMode="numeric"
+                      maxLength={9}
+                    />
+                  )}
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Tiempo entrega (min)</label>

@@ -9,7 +9,7 @@ import 'package:nexum_client/shared/services/transport_ws_service.dart';
 
 /// Botón del chat del servicio con el contador de mensajes sin leer.
 ///
-/// Lo usan el viaje, el envío y el mandado: los tres hablan por el mismo canal
+/// Lo usan el viaje, el envío, el mandado y el pedido: hablan por el mismo canal
 /// (`TransportWsService`) y por el mismo hilo del servidor. Antes vivía dentro
 /// del seguimiento del viaje y el mandado tenía un botón suelto sin contador.
 ///
@@ -42,6 +42,10 @@ class _BotonChatState extends State<BotonChat> {
   @override
   void initState() {
     super.initState();
+    // El contador vive de esta conexión. En el viaje y el mandado ya está
+    // abierta; en el pedido no (ese usa la suya), así que se abre aquí. Es la
+    // misma conexión que usará el chat: abrirla no cuesta una segunda.
+    unawaited(TransportWsService().connect());
     _sub = TransportWsService().tripChatEvents.listen((event) {
       if (!mounted) return;
       final msg = event.message;

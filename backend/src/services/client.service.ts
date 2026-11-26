@@ -13,6 +13,7 @@ import {
 } from '../types';
 import { TripStatus, OrderStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { domicilioDeTienda } from '../lib/tarifa-domicilio';
 import { nuevaReferencia } from '../lib/referencia';
 import { liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
 import { tasaComision } from './comision.service';
@@ -352,7 +353,9 @@ export async function cotizarEnvio(
   const lastMile = !!destino && entrega.lastMile === true && ultimaMillaMotivo === null;
 
   const envio = desgloseEnvio({
-    deliveryFee: biz.deliveryFee,
+    // El domicilio lo fija ZIPA (ver `lib/tarifa-domicilio`): la pantalla y la
+    // caja pasan las dos por aquí, así que no pueden decir cifras distintas.
+    deliveryFee: domicilioDeTienda(biz.deliveryFee),
     intercityFee: destino?.fee ?? null,
     intercity: !!destino,
     lastMile,
@@ -1297,20 +1300,14 @@ export async function updateOrderStatusByDriver(
   await registrarEventoPedido(orderId, map[status], { actor: 'conductor' });
 
   if (status === 'delivered') {
-    const tasa = await tasaComision({
-      operatorId: updated.operatorId,
-      driverId: updated.driverId,
-      lat: updated.deliveryLat,
-      lng: updated.deliveryLng,
-    });
-    const commission = Math.round(updated.deliveryFee * tasa);
+    const liq = await liquidacionDePedido(updated);
     recordCompletedTrip(
       {
         tripId: orderId,
         origin: updated.business?.name ?? 'Negocio',
         destination: updated.deliveryAddress,
-        grossFare: updated.deliveryFee,
-        netEarning: updated.deliveryFee - commission,
+        grossFare: liq.finalFare,
+        netEarning: liq.netEarning,
         completedAt: new Date().toISOString(),
       },
       driverId,
@@ -1760,6 +1757,36 @@ export function registerAvisoWhatsapp(
   _avisarPorWhatsapp = fn;
 }
 
+/** Lo que se le liquida al repartidor por un servicio: bruto, comisión y neto. */
+export interface LiquidacionServicio {
+  finalFare: number;
+  commission: number;
+  netEarning: number;
+}
+
+/**
+ * La liquidación de un pedido: el domicilio, menos la comisión. Es la MISMA
+ * función que paga al repartidor y la que le devuelve el resumen al entregar:
+ * si fueran dos cálculos, el resumen podría enseñar una cifra y la billetera
+ * acreditar otra.
+ */
+export async function liquidacionDePedido(o: {
+  deliveryFee: number;
+  operatorId: string | null;
+  driverId: string | null;
+  deliveryLat: number | null;
+  deliveryLng: number | null;
+}): Promise<LiquidacionServicio> {
+  const tasa = await tasaComision({
+    operatorId: o.operatorId,
+    driverId: o.driverId,
+    lat: o.deliveryLat,
+    lng: o.deliveryLng,
+  });
+  const commission = Math.round(o.deliveryFee * tasa);
+  return { finalFare: o.deliveryFee, commission, netEarning: o.deliveryFee - commission };
+}
+
 export async function cancelClientTrip(clientId: string, tripId: string): Promise<boolean> {
   const trip = await prisma.trip.findFirst({ where: { id: tripId, passengerId: clientId } });
   if (!trip) return false;
@@ -1831,11 +1858,14 @@ export async function getActiveClientTrip(clientId: string): Promise<ClientTripW
   if (!trip) return null;
   // Vista propia del cliente: aquí sí va el PIN (así lo recupera si reinstala
   // la app o pierde el estado local con un envío en curso).
-  return _conPin(
-    _toTripDTO(trip, clientId, {
-      driver: trip.driver,
-      vehicle: trip.driver?.vehicles[0],
-    }),
+  return _conViajeEnCola(
+    _conPin(
+      _toTripDTO(trip, clientId, {
+        driver: trip.driver,
+        vehicle: trip.driver?.vehicles[0],
+      }),
+      trip,
+    ),
     trip,
   );
 }
@@ -2108,11 +2138,25 @@ export async function getClientTripSnapshot(
     },
   });
   if (!trip) return null;
-  const dto = _toTripDTO(trip, trip.passengerId ?? '', {
-    driver: trip.driver,
-    vehicle: trip.driver?.vehicles[0],
-  });
+  const dto = await _conViajeEnCola(
+    _toTripDTO(trip, trip.passengerId ?? '', {
+      driver: trip.driver,
+      vehicle: trip.driver?.vehicles[0],
+    }),
+    trip,
+  );
   return incluirPin ? _conPin(dto, trip) : dto;
+}
+
+/** Marca el viaje encadenado (ver `viaje-en-cola.service`). */
+async function _conViajeEnCola<T extends ClientTripDTO>(
+  dto: T,
+  trip: { id: string; status: string; driverId: string | null },
+): Promise<T> {
+  const { conductorTerminandoOtroViaje } = await import('./viaje-en-cola.service');
+  return (await conductorTerminandoOtroViaje(trip))
+    ? { ...dto, driverFinishingOtherTrip: true }
+    : dto;
 }
 
 function _notifyTripListeners(tripId: string, _passengerId: string, dto: ClientTripDTO): void {
@@ -2135,10 +2179,13 @@ export async function notifyClientTripUpdateById(tripId: string): Promise<void> 
     },
   });
   if (!trip || !trip.passengerId) return;
-  const dto = _toTripDTO(trip, trip.passengerId, {
-    driver: trip.driver,
-    vehicle: trip.driver?.vehicles[0],
-  });
+  const dto = await _conViajeEnCola(
+    _toTripDTO(trip, trip.passengerId, {
+      driver: trip.driver,
+      vehicle: trip.driver?.vehicles[0],
+    }),
+    trip,
+  );
   _notifyTripListeners(tripId, trip.passengerId, dto);
 }
 

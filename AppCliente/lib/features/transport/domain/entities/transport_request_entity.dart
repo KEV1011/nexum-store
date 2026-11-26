@@ -174,6 +174,7 @@ class TransportRequestEntity {
     this.originLng,
     this.destLat,
     this.destLng,
+    this.terminandoOtroViaje = false,
   });
 
   factory TransportRequestEntity.fromJson(Map<String, dynamic> json) =>
@@ -244,6 +245,7 @@ class TransportRequestEntity {
         originLng: (json['originLng'] as num?)?.toDouble(),
         destLat: (json['destLat'] as num?)?.toDouble(),
         destLng: (json['destLng'] as num?)?.toDouble(),
+        terminandoOtroViaje: json['driverFinishingOtherTrip'] == true,
       );
 
   final String id;
@@ -345,6 +347,11 @@ class TransportRequestEntity {
   final double? destLat;
   final double? destLng;
 
+  /// Viaje encadenado: el conductor ya aceptó, pero sigue terminando otro
+  /// viaje con un pasajero a bordo cerca de su destino. Sin decirlo, el carro
+  /// yendo hacia otro lado en el mapa se lee como que no viene.
+  final bool terminandoOtroViaje;
+
   bool get isActive => status.isActive;
   bool get isCompleted => status.isCompleted;
   bool get isCancelled => status.isCancelled;
@@ -390,6 +397,7 @@ class TransportRequestEntity {
     double? originLng,
     double? destLat,
     double? destLng,
+    bool? terminandoOtroViaje,
     /// Borra la ficha del conductor. Para cuando el servicio vuelve a buscar
     /// porque el conductor lo soltó: con el `??` de siempre, la ficha del que
     /// se fue seguiría en pantalla debajo de «Buscando conductor».
@@ -435,6 +443,8 @@ class TransportRequestEntity {
       originLng: originLng ?? this.originLng,
       destLat: destLat ?? this.destLat,
       destLng: destLng ?? this.destLng,
+      terminandoOtroViaje: !sinConductor &&
+          (terminandoOtroViaje ?? this.terminandoOtroViaje),
     );
   }
 
@@ -457,6 +467,7 @@ class TransportRequestEntity {
         // pasajero se queda sin el código justo cuando llega el carro.
         if (boardingPin != null) 'boardingPin': boardingPin,
         if (passengerNote != null) 'passengerNote': passengerNote,
+        if (terminandoOtroViaje) 'driverFinishingOtherTrip': true,
         if (driverId != null) 'driverId': driverId,
         if (promoDiscount > 0) 'promoDiscount': promoDiscount,
         if (totalPasajero != null) 'totalPasajero': totalPasajero,

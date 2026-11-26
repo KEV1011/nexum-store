@@ -121,7 +121,26 @@ let driverActiveTripId: string | null = null;
 // mandaderos simultáneos, el segundo recibía "Already handling an errand").
 const driverActiveErrandIdMap = new Map<string, string>(); // driverId → errandId
 
-const clientSockets = new Map<string, WebSocket>();
+// TODAS las conexiones vivas de cada cliente, no una sola. La app del pasajero
+// abre dos (una para los pedidos y otra para viajes, mandados y chat) y puede
+// estar además en la web: con una sola por cliente, cada conexión nueva
+// cerraba la anterior, la cerrada reconectaba y cerraba a la otra, y las dos se
+// tumbaban entre sí cada par de segundos mientras hubiera un pedido abierto.
+const clientSockets = new Map<string, Set<WebSocket>>();
+/** Más que esto por cliente es un cliente roto reconectando en bucle. */
+const MAX_CONEXIONES_POR_CLIENTE = 6;
+
+/** Las conexiones abiertas de un cliente (vacío si no tiene ninguna). */
+function conexionesDeCliente(clientId: string): WebSocket[] {
+  const set = clientSockets.get(clientId);
+  if (!set) return [];
+  return [...set].filter((w) => w.readyState === WebSocket.OPEN);
+}
+
+/** Entrega a todas las conexiones LOCALES del cliente, sin pasar por el bus. */
+function entregarACliente(clientId: string, payload: Record<string, unknown>): void {
+  for (const w of conexionesDeCliente(clientId)) sendTo(w, payload);
+}
 const clientSubscriptions = new Map<WebSocket, Array<() => void>>();
 const clientTripSubs = new Map<WebSocket, Map<string, () => void>>();
 const clientErrandSubs = new Map<WebSocket, Map<string, () => void>>();
@@ -350,8 +369,7 @@ async function handleAcceptErrand(ws: WebSocket, errandId: string): Promise<void
   // El cliente suscrito recibe la actualización vía _notify; este envío directo
   // es un respaldo por si la suscripción aún no estaba activa.
   if (clientErrand) {
-    const clientWs = clientSockets.get(clientErrand.clientId);
-    if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
+    entregarACliente(clientErrand.clientId, { type: 'errand_update', errandId, errand: updated });
   }
 }
 
@@ -408,8 +426,7 @@ async function handleErrandStatus(
   }
   if (updated) {
     sendTo(ws, { type: 'errand_update', errandId, errand: updated });
-    const clientWs = clientSockets.get(clientErrand.clientId);
-    if (clientWs) sendTo(clientWs, { type: 'errand_update', errandId, errand: updated });
+    entregarACliente(clientErrand.clientId, { type: 'errand_update', errandId, errand: updated });
 
     if (terminal) {
       if (senderId) driverActiveErrandIdMap.delete(senderId);
@@ -424,9 +441,17 @@ async function handleErrandStatus(
 function handleClientAuth(ws: WebSocket, token: string): void {
   try {
     const payload = verifyClientToken(token);
-    const old = clientSockets.get(payload.clientId);
-    if (old && old !== ws && old.readyState === WebSocket.OPEN) old.close();
-    clientSockets.set(payload.clientId, ws);
+    // Se SUMA a las suyas en vez de reemplazar (ver `clientSockets`). Solo se
+    // cierra la más vieja si se pasa del tope.
+    const set = clientSockets.get(payload.clientId) ?? new Set<WebSocket>();
+    for (const w of set) if (w.readyState !== WebSocket.OPEN) set.delete(w);
+    set.add(ws);
+    while (set.size > MAX_CONEXIONES_POR_CLIENTE) {
+      const vieja = set.values().next().value as WebSocket;
+      set.delete(vieja);
+      if (vieja !== ws && vieja.readyState === WebSocket.OPEN) vieja.close();
+    }
+    clientSockets.set(payload.clientId, set);
     clientIdByWs.set(ws, payload.clientId);
     marcarIdentificado(ws);
     sendTo(ws, { type: 'client_auth_ok', clientId: payload.clientId });
@@ -622,8 +647,7 @@ async function handleLocationUpdate(
   const clientId = await updateClientTripLocation(effectiveTripId, lat, lng);
   if (!clientId) return;
 
-  const clientWs = clientSockets.get(clientId);
-  if (clientWs) sendTo(clientWs, { type: 'driver_location', tripId: effectiveTripId, lat, lng });
+  entregarACliente(clientId, { type: 'driver_location', tripId: effectiveTripId, lat, lng });
 }
 
 /**
@@ -729,8 +753,7 @@ function avisarOfertaPerdida(
 // ─── Ride negotiation handlers (multi-driver + bids + chat) ─────────────────────
 
 function sendToClient(clientId: string, payload: Record<string, unknown>): void {
-  const ws = clientSockets.get(clientId);
-  if (ws) sendTo(ws, payload);
+  entregarACliente(clientId, payload);
   // Fan-out a otras instancias (no-op sin Redis).
   publishDelivery({ kind: 'client', id: clientId }, payload);
 }
@@ -745,8 +768,7 @@ function sendToDriverById(driverId: string, payload: Record<string, unknown>): v
 // originado en otra instancia.
 function deliverLocally(target: BusTarget, payload: Record<string, unknown>): void {
   if (target.kind === 'client') {
-    const ws = clientSockets.get(target.id);
-    if (ws) sendTo(ws, payload);
+    entregarACliente(target.id, payload);
   } else if (target.kind === 'driver') {
     const conn = driverConnections.get(target.id);
     if (conn) sendTo(conn.ws, payload);
@@ -1081,8 +1103,7 @@ function onMessage(ws: WebSocket, raw: string): void {
           // Esto cubre al pasajero que tiene el socket abierto pero no llegó a
           // suscribirse (p. ej. acaba de reconectar): se le manda directo.
           const raw = await getClientTripRaw(tripId);
-          const clientWs = raw ? clientSockets.get(raw.clientId) : undefined;
-          if (clientWs) sendTo(clientWs, { type: 'trip_update', tripId, trip });
+          if (raw) entregarACliente(raw.clientId, { type: 'trip_update', tripId, trip });
           // Al completar, el ack lleva la liquidación real del backend para que
           // la app del conductor muestre tarifa/neto/comisión verdaderos.
           sendTo(ws, settlement
@@ -1608,6 +1629,9 @@ function onClose(ws: WebSocket): void {
     driverActiveTripIdMap.delete(driverId);
     driverActiveErrandIdMap.delete(driverId);
   }
+  // El dueño se lee ANTES de olvidarlo: sin él no se sabe de qué cliente
+  // sacar esta conexión, y quedaría en su lista para siempre.
+  const cidCerrado = clientIdByWs.get(ws);
   driverIdByWs.delete(ws);
   clientIdByWs.delete(ws);
 
@@ -1642,8 +1666,10 @@ function onClose(ws: WebSocket): void {
   if (intercityMap) { for (const fn of intercityMap.values()) fn(); clientIntercitySubs.delete(ws); }
 
   // Remove from clientSockets
-  for (const [cid, sock] of clientSockets.entries()) {
-    if (sock === ws) { clientSockets.delete(cid); break; }
+  if (cidCerrado) {
+    const set = clientSockets.get(cidCerrado);
+    set?.delete(ws);
+    if (set && set.size === 0) clientSockets.delete(cidCerrado);
   }
 
   // Business cleanup
@@ -1712,8 +1738,7 @@ export function setupWebSocket(wss: WebSocketServer): void {
   // «¿Todo bien?» al pasajero tras una detención o un desvío. Si tiene la app
   // abierta le sale al instante; si no, le llega el push.
   registerSafetyCheckToClient((clientId, tripId, kind) => {
-    const ws = clientSockets.get(clientId);
-    if (ws) sendTo(ws, { type: 'safety_check', tripId, kind });
+    entregarACliente(clientId, { type: 'safety_check', tripId, kind });
   });
   // Reservas: «tu reserva empieza ahora» y «se te liberó por no aparecer».
   registerReservaSendToDriver((driverId, msg) => sendToDriverById(driverId, msg));

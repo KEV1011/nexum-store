@@ -202,6 +202,11 @@ class _TrackingView extends ConsumerWidget {
                   // panel plegado, y es la pregunta que trae aquí al pasajero.
                   _StatusTimeline(request: request),
                   const SizedBox(height: 16),
+                  if (request.terminandoOtroViaje &&
+                      request.status == TransportStatus.accepted) ...[
+                    const _TerminandoOtroViaje(),
+                    const SizedBox(height: 16),
+                  ],
                   if (request.driverName != null) ...[
                     _DriverCard(request: request),
                     const SizedBox(height: 16),
@@ -490,6 +495,54 @@ class _StatusCard extends StatelessWidget {
         TransportStatus.completed => Icons.check_circle_rounded,
         TransportStatus.cancelled => Icons.cancel_rounded,
       };
+}
+
+/// Viaje encadenado: el conductor aceptó, pero aún deja a otro pasajero cerca.
+/// Es lo que explica por qué el carro va hacia otro lado en el mapa.
+class _TerminandoOtroViaje extends StatelessWidget {
+  const _TerminandoOtroViaje();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.surfaceVariantColor,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.schedule_rounded,
+              size: 18, color: context.textSecondaryColor),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tu conductor está terminando otro viaje',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: context.textPrimaryColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Deja a un pasajero cerca y sale de inmediato por ti. '
+                  'Por eso en el mapa lo ves yendo hacia otro lado.',
+                  style:
+                      TextStyle(fontSize: 13, color: context.textSecondaryColor),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Lo que el pasajero le escribió al conductor, para que sepa que le llegó.

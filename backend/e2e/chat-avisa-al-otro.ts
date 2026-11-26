@@ -36,6 +36,8 @@ const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 interface Conexion {
   recibidos: Array<Record<string, unknown>>;
+  /** El servidor la cerró (o se cerró sola). */
+  cerrada: () => boolean;
   enviar: (m: Record<string, unknown>) => void;
   de: (type: string) => Array<Record<string, unknown>>;
   cerrar: () => Promise<void>;
@@ -44,6 +46,8 @@ interface Conexion {
 async function abrir(puerto: number, auth: Record<string, unknown>, ok: string): Promise<Conexion> {
   const ws = new WebSocket(`ws://127.0.0.1:${puerto}`);
   const recibidos: Array<Record<string, unknown>> = [];
+  let cerrada = false;
+  ws.on('close', () => { cerrada = true; });
   ws.on('message', (d) => { recibidos.push(JSON.parse(d.toString())); });
   await new Promise<void>((bien, mal) => { ws.once('open', () => bien()); ws.once('error', mal); });
   ws.send(JSON.stringify(auth));
@@ -51,9 +55,14 @@ async function abrir(puerto: number, auth: Record<string, unknown>, ok: string):
   await esperar(200);
   return {
     recibidos,
+    cerrada: () => cerrada,
     enviar: (m) => ws.send(JSON.stringify(m)),
     de: (type) => recibidos.filter((m) => m['type'] === type),
-    cerrar: () => new Promise<void>((bien) => { ws.once('close', () => bien()); ws.close(); }),
+    cerrar: () => new Promise<void>((bien) => {
+      if (cerrada) { bien(); return; }
+      ws.once('close', () => bien());
+      ws.close();
+    }),
   };
 }
 
@@ -171,6 +180,30 @@ async function main(): Promise<void> {
     await esperar(500);
     const guardados = await prisma.tripMessage.count({ where: { tripId: mandado.id, senderId: ajeno.id } });
     comprobar('su mensaje no se guarda', guardados === 0);
+
+    console.log('\n[6] El mismo cliente con DOS conexiones (pedidos + viajes): ninguna tumba a la otra');
+    // La app del pasajero abre una para los pedidos y otra para lo demás. Con
+    // una sola por cliente, la segunda cerraba la primera y se tumbaban entre sí.
+    const wsCliente2 = await abrir(puerto, { type: 'client_auth', token: tokenCliente(cliente.id, cliente.phone) }, 'client_auth_ok');
+    await esperar(400);
+    comprobar('la primera conexión sigue abierta', !wsCliente.cerrada());
+    comprobar('la segunda también', !wsCliente2.cerrada());
+    wsConductor.enviar({ type: 'unsubscribe_trip_chat', tripId: envio.id });
+    wsCliente.enviar({ type: 'unsubscribe_trip_chat', tripId: envio.id });
+    await esperar(200);
+    const a1 = wsCliente.de('trip_chat_message').length;
+    const b1 = wsCliente2.de('trip_chat_message').length;
+    wsConductor.enviar({ type: 'trip_chat_send', tripId: mandado.id, text: 'Ya voy saliendo de la droguería' });
+    await esperar(700);
+    comprobar('el mensaje llega a las dos', wsCliente.de('trip_chat_message').length === a1 + 1
+      && wsCliente2.de('trip_chat_message').length === b1 + 1,
+      `${wsCliente.de('trip_chat_message').length - a1} y ${wsCliente2.de('trip_chat_message').length - b1}`);
+    await wsCliente2.cerrar();
+    await esperar(200);
+    const a2 = wsCliente.de('trip_chat_message').length;
+    wsConductor.enviar({ type: 'trip_chat_send', tripId: mandado.id, text: 'Llego en cinco' });
+    await esperar(700);
+    comprobar('cerrar una no deja sorda a la otra', wsCliente.de('trip_chat_message').length === a2 + 1);
 
     await wsCliente.cerrar();
     await wsAjeno.cerrar();

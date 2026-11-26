@@ -197,13 +197,32 @@ String motivoDelRechazo(Object? cuerpo, String porDefecto) {
   return error is String && error.trim().isNotEmpty ? error : porDefecto;
 }
 
+/// Lo que contestó el servidor a un paso de un pedido o un mandado.
+class PasoConfirmado {
+  const PasoConfirmado({required this.confirmado, this.liquidacion});
+
+  /// `false` = el servidor aún no tiene la ruta; quien llama lo manda por el
+  /// socket, como antes.
+  final bool confirmado;
+
+  /// Lo que liquidó al ENTREGAR (domicilio o tarifa del mandado, comisión y
+  /// neto). Solo viene en `delivered` y con un servidor que ya la devuelve;
+  /// sin ella el resumen cae a su estimación y lo dice.
+  final LiquidacionViaje? liquidacion;
+}
+
+/// La liquidación dentro de la respuesta `{success, data: {…, settlement}}`.
+/// Pura, para probarla sin red.
+LiquidacionViaje? liquidacionDeRespuesta(Object? cuerpo) {
+  final data = cuerpo is Map ? cuerpo['data'] : null;
+  return data is Map ? LiquidacionViaje.desdeJson(data['settlement']) : null;
+}
+
 /// Mueve el pedido [orderId] a [estado] (`at_pickup`, `in_transit`,
 /// `delivered`) y espera a que el servidor lo confirme.
 ///
-/// Devuelve `true` si lo confirmó y `false` si el servidor aún no tiene esta
-/// ruta — ahí quien llama lo manda por el socket, como antes. Lanza
-/// [CierreViajeError] si no se pudo confirmar.
-Future<bool> cambiarEstadoPedido({
+/// Lanza [CierreViajeError] si no se pudo confirmar.
+Future<PasoConfirmado> cambiarEstadoPedido({
   required String orderId,
   required String estado,
   String? pin,
@@ -216,7 +235,7 @@ Future<bool> cambiarEstadoPedido({
 
 /// Mueve el mandado [errandId] a [estado] (`shopping`, `on_the_way`,
 /// `delivered`). Mismo contrato que [cambiarEstadoPedido].
-Future<bool> cambiarEstadoMandado({
+Future<PasoConfirmado> cambiarEstadoMandado({
   required String errandId,
   required String estado,
   double? actualCost,
@@ -232,7 +251,7 @@ Future<bool> cambiarEstadoMandado({
       'el mandado',
     );
 
-Future<bool> _moverServicio(
+Future<PasoConfirmado> _moverServicio(
   String ruta,
   Map<String, dynamic> datos,
   String queEs,
@@ -241,8 +260,12 @@ Future<bool> _moverServicio(
     int? status;
     Object? cuerpo;
     try {
-      await DioClient().dio.post<Map<String, dynamic>>(ruta, data: datos);
-      return true;
+      final res =
+          await DioClient().dio.post<Map<String, dynamic>>(ruta, data: datos);
+      return PasoConfirmado(
+        confirmado: true,
+        liquidacion: liquidacionDeRespuesta(res.data),
+      );
     } on DioException catch (e) {
       status = e.response?.statusCode;
       cuerpo = e.response?.data;
@@ -252,7 +275,7 @@ Future<bool> _moverServicio(
 
     switch (leerRechazoDeEstado(status, cuerpo)) {
       case RechazoDeEstado.rutaAusente:
-        return false;
+        return const PasoConfirmado(confirmado: false);
       case RechazoDeEstado.pin:
         throw CierreViajeError(
           motivoDelRechazo(cuerpo, 'El PIN no coincide. Verifícalo.'),

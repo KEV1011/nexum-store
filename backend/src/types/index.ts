@@ -1035,6 +1035,12 @@ export interface ClientTripDTO {
   etaMinutes: number;
   status: ClientTripStatus;
   /**
+   * Viaje encadenado: el conductor ya aceptó este viaje pero sigue terminando
+   * otro con un pasajero a bordo, cerca de su destino. La app lo dice para que
+   * el carro yendo hacia otro lado no se lea como que no viene. Ausente = no.
+   */
+  driverFinishingOtherTrip?: boolean;
+  /**
    * Para poder abrir su perfil público desde la ficha. Es un identificador
    * opaco y la ruta que lo consume exige sesión del pasajero: no revela nada
    * que no vea ya en la tarjeta del conductor.

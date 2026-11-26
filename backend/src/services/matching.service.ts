@@ -1,3 +1,4 @@
+import { conductorTerminandoOtroViaje } from './viaje-en-cola.service';
 import { createHash } from 'crypto';
 import { DriverStatus, Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
@@ -1050,13 +1051,20 @@ export async function onDriverAccept(tripId: string, driverId: string): Promise<
   if (_notifyTripUpdate) await _notifyTripUpdate(tripId);
 
   if (updated.passengerId) {
+    // Encadenado: todavía lleva a otro pasajero. Decirle «va en camino» con
+    // la voz y el carro yendo hacia otro lado se lee como que no viene.
+    const enCola = await conductorTerminandoOtroViaje(updated);
     void sendPushToClient(updated.passengerId, {
       title: 'Conductor asignado',
-      body: 'Tu conductor está en camino. Abre la app para seguirlo en el mapa.',
+      body: enCola
+        ? 'Tu conductor está terminando un viaje cerca y luego va por ti.'
+        : 'Tu conductor está en camino. Abre la app para seguirlo en el mapa.',
       data: { type: 'trip_accepted', tripId },
       // En un envío quien va en camino es por el paquete: no hay frase para
-      // eso, así que suena el aviso de siempre.
-      ...(updated.serviceType === 'ENVIOS' ? {} : { voz: 'conductor_en_camino' as const }),
+      // eso, así que suena el aviso de siempre. Encadenado, tampoco.
+      ...(updated.serviceType === 'ENVIOS' || enCola
+        ? {}
+        : { voz: 'conductor_en_camino' as const }),
     });
   }
 

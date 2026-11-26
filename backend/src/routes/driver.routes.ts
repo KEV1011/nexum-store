@@ -1439,10 +1439,11 @@ router.post('/orders/:id/status', async (req: Request, res: Response): Promise<v
   }
   const pin = typeof req.body?.['pin'] === 'string' ? (req.body['pin'] as string) : undefined;
   try {
-    const order = await driverUpdateOrderStatus(
+    // { order, settlement? }: con «entregado» trae lo que se le liquida.
+    const data = await driverUpdateOrderStatus(
       req.driverId!, req.params['id']!, status as DriverOrderStatus, pin,
     );
-    res.json({ success: true, data: { order } });
+    res.json({ success: true, data });
   } catch (err) {
     _responderErrorDeEstado(res, err, 'pedido');
   }
@@ -1468,10 +1469,10 @@ router.post('/errands/:id/status', async (req: Request, res: Response): Promise<
   const actualCost =
     typeof crudo === 'number' && Number.isFinite(crudo) && crudo >= 0 ? crudo : undefined;
   try {
-    const errand = await driverUpdateErrandStatus(
+    const data = await driverUpdateErrandStatus(
       req.driverId!, req.params['id']!, status as EstadoDeMandado, actualCost, pin,
     );
-    res.json({ success: true, data: { errand } });
+    res.json({ success: true, data });
   } catch (err) {
     _responderErrorDeEstado(res, err, 'mandado');
   }

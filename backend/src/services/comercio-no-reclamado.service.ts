@@ -15,6 +15,7 @@
 // lista de compras que el repartidor lee en el mostrador.
 
 import { prisma } from '../lib/prisma';
+import { domicilioDeTienda } from '../lib/tarifa-domicilio';
 import {
   atiendeDirecto,
   listaDeCompra,
@@ -97,7 +98,7 @@ export async function comprarEnComercio(
     where: { id: dto.businessId },
     select: {
       id: true, name: true, address: true, lat: true, lng: true, citySlug: true,
-      category: true, claimed: true, isOpen: true, unpaidSince: true,
+      category: true, claimed: true, isOpen: true, unpaidSince: true, deliveryFee: true,
     },
   });
   if (!negocio || !negocio.isOpen) {
@@ -186,6 +187,10 @@ export async function comprarEnComercio(
     purchaseBudget: presupuesto,
     ...(dto.notes?.trim() ? { notes: dto.notes.trim() } : {}),
     ...(pago.metodo ? { paymentMethod: pago.metodo } : {}),
+  }, {
+    // Para el cliente es un domicilio de un restaurante, igual que un pedido
+    // normal: cuesta lo mismo, no lo de un mandado.
+    serviceFee: domicilioDeTienda(negocio.deliveryFee),
   });
 
   return {
