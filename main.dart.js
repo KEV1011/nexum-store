@@ -43025,12 +43025,14 @@ cs(a,b,c,d){var s,r=null,q=b.Z(t.q).f
 q.XM()
 s=A.T(12)
 q.dN(A.er(r,r,r,a,B.mR,B.A,r,A.Y(A.b([A.as(c,B.i,r,r,20),B.a6,A.ao(A.j(d,r,r,r,r,r,B.a12,r,r,r),1)],t.p),B.k,B.f,B.h,0,r),r,B.Ft,r,r,r,B.fz,r,r,r,new A.cj(s,B.G),r,r))},
-bqL(a,b){return A.c0G(a,b)},
-c0G(a,b){var s=0,r=A.q(t.u),q,p=2,o=[],n,m,l,k,j,i
-var $async$bqL=A.r(function(c,d){if(c===1){o.push(d)
+bqL(a,b,c){return A.c0G(a,b,c)},
+c0G(a,b,c){var s=0,r=A.q(t.u),q,p=2,o=[],n,m,l,k,j,i,h
+var $async$bqL=A.r(function(d,e){if(d===1){o.push(e)
 s=p}for(;;)switch(s){case 0:p=4
+k=$.cO()
+j=c?"/driver/orders/"+a+"/eta":"/driver/errands/"+a+"/eta"
 s=7
-return A.i($.cO().a.eH("/driver/errands/"+a+"/eta",A.an(["minutos",b],t.N,t.S),t.P),$async$bqL)
+return A.i(k.a.eH(j,A.an(["minutos",b],t.N,t.S),t.P),$async$bqL)
 case 7:q=null
 s=1
 break
@@ -43038,14 +43040,14 @@ p=2
 s=6
 break
 case 4:p=3
-i=o.pop()
-j=A.ab(i)
-if(j instanceof A.d8){n=j
-j=n.b
-m=j==null?null:j.a
+h=o.pop()
+k=A.ab(h)
+if(k instanceof A.d8){n=k
+k=n.b
+m=k==null?null:k.a
 l=t.P.b(m)?J.M(m,"error"):null
-j=typeof l=="string"&&l.length!==0?l:"No pudimos avisarle. Revisa tu conexi\xf3n."
-q=j
+k=typeof l=="string"&&l.length!==0?l:"No pudimos avisarle. Revisa tu conexi\xf3n."
+q=k
 s=1
 break}else{q="No pudimos avisarle. Revisa tu conexi\xf3n."
 s=1
@@ -135053,21 +135055,25 @@ if(a.a.Q!=null)B.b.K(m,A.b([A.dC(!1,B.R,!0,n,A.dP(!1,n,!0,B.aq9,B.cS,!0,n,n,n,n,
 m.push(A.dC(!1,B.R,!0,n,A.dP(!1,n,!0,B.aqd,B.cS,!0,n,n,n,n,n,n,n,n,n,n,n,new A.aZj(o),n,n,n,n,n,n,n),B.l,B.I,4,n,B.eR,B.cS,n,n,B.bs))
 return A.hh(n,A.dR(!0,new A.a1(B.fz,A.Y(m,B.k,B.f,B.h,0,n),n),B.a_,!0),n,n,0,0,0,n)},
 C7(a){return this.aLU(a)},
-aLU(a){var s=0,r=A.q(t.H),q,p=this,o,n,m
+aLU(a){var s=0,r=A.q(t.H),q,p=this,o,n,m,l,k
 var $async$C7=A.r(function(b,c){if(b===1)return A.n(c,r)
-for(;;)switch(s){case 0:m=p.c
-m.toString
+for(;;)switch(s){case 0:k=p.c
+k.toString
 s=3
-return A.i(A.fO(null,new A.aZI(),m,!1,null,!1,t.S),$async$C7)
+return A.i(A.fO(null,new A.aZI(),k,!1,null,!1,t.S),$async$C7)
 case 3:o=c
 if(o==null||p.c==null){s=1
-break}s=4
-return A.i(A.bqL(a.a.a,o),$async$C7)
-case 4:n=c
-m=p.c
-if(m==null){s=1
-break}if(n!=null)A.cs(B.I,m,B.bp,n)
-else A.cs(B.o,m,B.dT,"Le avisamos: entregas en ~"+A.t(o)+" min.")
+break}k=a.a
+n=k.as
+m=n==null
+k=m?k.a:n
+s=4
+return A.i(A.bqL(k,o,!m),$async$C7)
+case 4:l=c
+k=p.c
+if(k==null){s=1
+break}if(l!=null)A.cs(B.I,k,B.bp,l)
+else A.cs(B.o,k,B.dT,"Le avisamos: entregas en ~"+A.t(o)+" min.")
 case 1:return A.o(q,r)}})
 return A.p($async$C7,r)},
 aPn(a){var s=this.Hy(a.a),r=null
@@ -139699,7 +139705,7 @@ n=A.a4k(i?B.aa:B.au,16,k,16)
 m=A.a4(k,B.aeT,B.l,k,k,new A.a2(B.xV.ab(0.12),k,k,A.T(8),k,k,B.t),k,38,k,k,k,k,k,38)
 o=o.z
 o=A.ao(A.ef(A.b([new A.Bj("VIAJES",k),new A.fM(B.oQ,"Inicio",new A.b_X(a),B.o,!1,k),new A.fM(B.acU,"Historial de viajes",new A.b00(a),B.cE,!1,k),new A.fM(B.GN,"Reservas",new A.b01(a),B.li,!1,k),new A.fM(B.iv,"Mis fletes de carga",new A.b02(a),B.az,!1,k),new A.fM(B.Gu,"Remitos de mercanc\xeda",new A.b03(a),B.o3,!1,k),new A.fM(B.cW,"Calificaciones",new A.b04(a),B.ci,!1,k),new A.fM(B.zK,"ZIPA Pro",new A.b05(a),B.o3,!1,k),new A.fM(B.lR,"Viajes compartidos",new A.b06(a),B.a7,!1,k),new A.fM(B.dU,"Intermunicipal",new A.b_N(a),B.a7,!1,k),new A.fM(B.oY,"Verificaci\xf3n",new A.b_O(a),B.o,!1,k),new A.Bj("FINANZAS",k),new A.fM(B.ad9,"Ganancias",new A.b_P(a),B.Em,!1,k),new A.fM(B.lN,"Billetera",new A.b_Q(a),B.a7b,!1,k),new A.fM(B.ad1,"Promociones",new A.b_R(a),B.a6s,!1,k),new A.Bj("HERRAMIENTAS",k),new A.fM(B.acz,"Rendimiento",new A.b_S(a),B.a78,!1,k),new A.fM(B.GP,"Mis documentos",new A.b_T(a),B.a7n,!1,k),new A.fM(B.lV,"Centro de seguridad",new A.b_U(a),B.I,!1,k),new A.Bj("CUENTA",k),new A.fM(B.GY,"Mi perfil",new A.b_V(a),B.ED,!1,k),new A.fM(B.zB,"Soporte y FAQ",new A.b_W(a),B.xX,!1,k),new A.fM(B.GC,"Configuraci\xf3n",new A.b_Y(a),B.a6i,!1,k),n,A.fH(!1,k,k,k,!0,k,12,k,!0,k,m,k,k,k,k,k,!1,k,k,k,k,k,k,A.j("Modo oscuro",k,k,k,k,k,o==null?k:o.cU(B.aJ),k,k,k),k,A.bDN(k,k,k,B.o,k,!1,B.F,k,k,k,k,k,k,new A.b_Z(b),k,k,k,k,k,k,k,k,g),k),new A.fM(B.zD,"Cerrar sesi\xf3n",new A.b0_(a,b),B.I,!0,k)],p),k,B.dm,k,B.Y,!1),1)
-return new A.a4s(h,A.dR(!0,A.a0(A.b([r,q,o,new A.a1(B.a1,A.j("ZIPA Conductor v1.0.0 \xb7 build 221",k,k,k,k,k,s==null?k:s.aB(B.b4),k,k,k),k)],p),B.k,B.f,B.h,0,B.p),B.a_,!0),k)}}
+return new A.a4s(h,A.dR(!0,A.a0(A.b([r,q,o,new A.a1(B.a1,A.j("ZIPA Conductor v1.0.0 \xb7 build 222",k,k,k,k,k,s==null?k:s.aB(B.b4),k,k,k),k)],p),B.k,B.f,B.h,0,B.p),B.a_,!0),k)}}
 A.b_J.prototype={
 $1(a){return a.length===0},
 $S:19}
