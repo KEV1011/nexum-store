@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:nexum_client/features/transport/presentation/screens/trip_chat_screen.dart';
+import 'package:nexum_client/shared/widgets/boton_chat.dart';
 import 'package:nexum_client/shared/widgets/driver_info_card.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -547,22 +547,12 @@ class _DriverCard extends StatelessWidget {
       fallbackGlyph: VehicleGlyphKind.delivery,
       esEntrega: true,
       actions: [
-        // Chat con el repartidor. El backend lo soporta desde que
-        // `_assertParticipant` autoriza Trip, Errand U Order: el historial y
-        // las fotos funcionan con el id del pedido. Lo que faltaba era el
-        // botón, que solo existía en el viaje urbano.
-        _CircleAction(
-          icon: Icons.chat_bubble_rounded,
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => TripChatScreen(
-                  tripId: order.id,
-                  peerName: order.driverName ?? 'Repartidor',
-                ),
-              ),
-            );
-          },
+        // Chat con el repartidor, con el contador de no leídos. El id del chat
+        // es el del pedido (el servidor autoriza Trip, Errand u Order).
+        BotonChat(
+          chatId: order.id,
+          peerName: order.driverName ?? 'Repartidor',
+          tooltip: 'Chat con el repartidor',
         ),
         _CircleAction(
           icon: Icons.call_rounded,

@@ -136,11 +136,55 @@ void main() {
 
     test('el socket solo se usa si el servidor no tiene la ruta', () {
       final paso = cuerpoDe('Future<bool> _confirmarPaso({');
-      expect(paso.contains('if (!confirmado) {'), isTrue);
+      expect(paso.contains('if (!paso.confirmado) {'), isTrue);
       expect(paso.contains('e.cancelado'), isTrue,
           reason: 'un servicio cancelado cierra la pantalla');
       expect(paso.contains('errorText: e.mensaje'), isTrue,
           reason: 'un PIN rechazado se vuelve a pedir con su motivo');
+    });
+  });
+
+  group('la liquidación de la entrega llega al resumen', () {
+    test('se lee de {data: {settlement}}', () {
+      final l = liquidacionDeRespuesta(<String, Object?>{
+        'success': true,
+        'data': <String, Object?>{
+          'order': <String, Object?>{'status': 'delivered'},
+          'settlement': <String, Object?>{
+            'finalFare': 4000,
+            'netEarning': 3400,
+            'commission': 600,
+          },
+        },
+      });
+      expect(l?.finalFare, 4000);
+      expect(l?.netEarning, 3400);
+      expect(l?.commission, 600);
+    });
+
+    test('sin liquidación (otro paso o servidor anterior) no se inventa', () {
+      expect(
+        liquidacionDeRespuesta(<String, Object?>{
+          'success': true,
+          'data': <String, Object?>{'order': <String, Object?>{}},
+        }),
+        isNull,
+      );
+      expect(liquidacionDeRespuesta(<String, Object?>{'success': true}),
+          isNull,);
+      expect(liquidacionDeRespuesta(null), isNull);
+      expect(liquidacionDeRespuesta('texto'), isNull);
+    });
+
+    test('la pantalla la guarda y la publica', () {
+      final fuente = File(
+        'lib/features/active_trip/presentation/screens/'
+        'active_trip_screen.dart',
+      ).readAsStringSync();
+      expect(fuente.contains('alLiquidar: (l) => liquidacion = l'), isTrue,
+          reason: 'la entrega de pedido/mandado debe guardar la liquidación',);
+      expect(fuente.contains('if (liq != null) alLiquidar?.call(liq);'),
+          isTrue,);
     });
   });
 }

@@ -19,6 +19,9 @@ function comprobar(nombre: string, ok: boolean, detalle = ''): void {
 const tel = (p: string) => `+57${p}${Math.floor(10000000 + Math.random() * 89999999)}`;
 
 async function main(): Promise<void> {
+  // Las cuentas de este guion parten del domicilio que puso el local (2.500):
+  // se apaga el domicilio fijo de ZIPA para medir la promoción, no la tarifa.
+  process.env['DOMICILIO_FIJO_COP'] = 'comercio';
   const {
     createBusinessProduct, updateBusinessSettings, getBusinessPublicById,
   } = await import('../src/services/business.service');

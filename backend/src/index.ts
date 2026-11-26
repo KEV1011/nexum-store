@@ -1,3 +1,4 @@
+import { modoDomicilio } from './lib/tarifa-domicilio';
 import 'dotenv/config';
 // ANTES que cualquier fichero de rutas: parchea el Router para que un handler
 // `async` que lance acabe en el manejador de errores global en vez de dejar la
@@ -222,6 +223,8 @@ app.get('/health', async (_req, res) => {
     cartaFoto: modoCartaOcr(),
     // El agente que revisa la carta leída: apagado | anthropic | anthropic-sin-llave | anthropic-rechazada.
     cartaIA: modoCartaIa(),
+    // Domicilio de los pedidos a comercios: fijo de ZIPA o el de cada local.
+    domicilio: modoDomicilio(),
     // Qué botones de acceso existen: «google+apple», «google» o «apagado».
     accesoSocial: modoAccesoSocial(),
     background: backgroundProviderName() === 'none' ? 'apagado' : backgroundProviderName(),

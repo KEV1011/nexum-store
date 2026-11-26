@@ -92,6 +92,19 @@ async function main(): Promise<void> {
     const filas = await prisma.driverEarning.findMany({ where: { driverId: repartidor.id } });
     return filas.reduce((s, f) => s + f.tripCount, 0);
   };
+  const netoTotal = async (): Promise<number> => {
+    const filas = await prisma.driverEarning.findMany({ where: { driverId: repartidor.id } });
+    return filas.reduce((s, f) => s + Number(f.netEarning), 0);
+  };
+  /** La liquidación que la respuesta le da al resumen del repartidor debe ser
+   *  la que quedó en su billetera: el resumen y la billetera no pueden discrepar. */
+  const liquidacionCuadra = (body: Resp['body'], netoAntes: number, netoDespues: number) => {
+    const s = (body.data as Record<string, unknown> | undefined)?.['settlement'] as
+      { finalFare?: number; netEarning?: number; commission?: number } | undefined;
+    return !!s && (s.finalFare ?? 0) > 0
+      && (s.netEarning ?? -1) + (s.commission ?? -1) === s.finalFare
+      && Math.abs((s.netEarning ?? 0) - (netoDespues - netoAntes)) < 1;
+  };
   const estadoConductor = async () =>
     (await prisma.driver.findUniqueOrThrow({ where: { id: repartidor.id } })).status;
   const enViaje = () => prisma.driver.update({ where: { id: repartidor.id }, data: { status: 'ON_TRIP' } });
@@ -151,11 +164,14 @@ async function main(): Promise<void> {
       && (await servicios()) === antes);
     comprobar('y el repartidor sigue en viaje', (await estadoConductor()) === 'ON_TRIP');
 
+    const netoP1 = await netoTotal();
     const entrego = await post(ruta1, { status: 'delivered', pin: p1.deliveryPin });
     comprobar('con el PIN del cliente, «entregado» responde 200', entrego.status === 200
       && entrego.body.data?.['order']?.status === 'delivered', JSON.stringify(entrego.body).slice(0, 160));
     comprobar('el pedido queda DELIVERED', (await pedidoEnBase(p1.id)).status === 'DELIVERED');
     comprobar('se liquidó UN servicio', (await servicios()) === antes + 1, `${await servicios()} vs ${antes + 1}`);
+    comprobar('y la respuesta trae la MISMA liquidación que la billetera (resumen)',
+      liquidacionCuadra(entrego.body, netoP1, await netoTotal()), JSON.stringify(entrego.body).slice(0, 220));
     comprobar('y el repartidor vuelve al despacho (ONLINE)', (await estadoConductor()) === 'ONLINE',
       await estadoConductor());
 
@@ -217,10 +233,13 @@ async function main(): Promise<void> {
     comprobar('no entregó ni liquidó', (await mandadoEnBase(m1.id)).status === 'ON_THE_WAY'
       && (await servicios()) === base7);
     await enViaje();
+    const netoM1 = await netoTotal();
     const mEntrego = await post(rutaM, { status: 'delivered', pin: '4821' });
     comprobar('con el PIN, «entregado» responde 200', mEntrego.status === 200
       && mEntrego.body.data?.['errand']?.status === 'delivered', JSON.stringify(mEntrego.body).slice(0, 160));
     comprobar('se liquidó UN servicio', (await servicios()) === base7 + 1, `${await servicios()} vs ${base7 + 1}`);
+    comprobar('y la respuesta trae la MISMA liquidación que la billetera (resumen)',
+      liquidacionCuadra(mEntrego.body, netoM1, await netoTotal()), JSON.stringify(mEntrego.body).slice(0, 220));
     comprobar('y el mandadero vuelve al despacho (ONLINE)', (await estadoConductor()) === 'ONLINE',
       await estadoConductor());
 

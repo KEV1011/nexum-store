@@ -1718,6 +1718,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
             estadoMandado: 'delivered',
             fasePin: CustodyPinPhase.delivery,
             pin: pin,
+            alLiquidar: (l) => liquidacion = l,
           );
           if (!sigue) {
             // No se confirmó (ya se dijo por qué): el servicio sigue abierto
@@ -1741,16 +1742,18 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
             estado: 'completed',
             pin: pin,
           );
-          // La respuesta trae la liquidación real. Va al mismo buzón donde la
-          // dejaba el `trip_status_ack`, que es donde la busca el resumen.
-          if (liquidacion != null) {
-            DriverWsService().publicarLiquidacion(TripSettlement(
-              tripId: tripBeforeFinish.request.id,
-              finalFare: liquidacion.finalFare,
-              netEarning: liquidacion.netEarning,
-              commission: liquidacion.commission,
-            ));
-          }
+        }
+        // La respuesta trae la liquidación real (viaje, pedido o mandado). Va
+        // al mismo buzón donde la dejaba el `trip_status_ack`, que es donde la
+        // busca el resumen — por el id del servicio, que es el del resumen.
+        final real = liquidacion;
+        if (real != null) {
+          DriverWsService().publicarLiquidacion(TripSettlement(
+            tripId: tripBeforeFinish.request.id,
+            finalFare: real.finalFare,
+            netEarning: real.netEarning,
+            commission: real.commission,
+          ));
         }
       }
 
@@ -1845,28 +1848,33 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     required CustodyPinPhase? fasePin,
     String? pin,
     double? actualCost,
+    void Function(LiquidacionViaje liquidacion)? alLiquidar,
   }) async {
     var pinActual = pin;
     while (true) {
       try {
         if (request.isOrder) {
-          final confirmado = await cambiarEstadoPedido(
+          final paso = await cambiarEstadoPedido(
             orderId: request.orderId!,
             estado: estadoPedido,
             pin: pinActual,
           );
-          if (!confirmado) {
+          final liq = paso.liquidacion;
+          if (liq != null) alLiquidar?.call(liq);
+          if (!paso.confirmado) {
             DriverWsService()
                 .sendOrderStatus(request.orderId!, estadoPedido, pin: pinActual);
           }
         } else {
-          final confirmado = await cambiarEstadoMandado(
+          final paso = await cambiarEstadoMandado(
             errandId: request.id,
             estado: estadoMandado,
             actualCost: actualCost,
             pin: pinActual,
           );
-          if (!confirmado) {
+          final liq = paso.liquidacion;
+          if (liq != null) alLiquidar?.call(liq);
+          if (!paso.confirmado) {
             DriverWsService().sendErrandStatus(
               request.id,
               estadoMandado,

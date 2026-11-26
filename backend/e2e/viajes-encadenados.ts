@@ -145,12 +145,27 @@ async function main(): Promise<void> {
     const encolado = await crearViaje(conCola, 'ACCEPTED', DESTINO_ACTUAL);
     comprobar('con uno ya aceptado deja de serlo', !(await esCandidato(conCola)));
 
+    console.log('\n═══ El pasajero encolado sabe que su conductor termina otro ═══');
+    const { getClientTripSnapshot } = await import('../src/services/client.service');
+    const vista = await getClientTripSnapshot(encolado.id);
+    comprobar('su viaje dice «terminando otro viaje»',
+      vista?.driverFinishingOtherTrip === true, JSON.stringify(vista?.driverFinishingOtherTrip));
+    const delOtro = await prisma.trip.findFirstOrThrow({
+      where: { driverId: conCola, status: 'IN_PROGRESS' },
+    });
+    const vistaOtro = await getClientTripSnapshot(delOtro.id);
+    comprobar('el pasajero que va a bordo NO lo ve',
+      vistaOtro?.driverFinishingOtherTrip !== true);
+
     console.log('\n═══ Cerrar el primero NO lo suelta si el segundo espera ═══');
     await prisma.trip.updateMany({
       where: { driverId: conCola, status: 'IN_PROGRESS' },
       data: { status: 'COMPLETED', completedAt: new Date() },
     });
     await liberarConductorSiNoTieneMas(conCola);
+    const vistaLuego = await getClientTripSnapshot(encolado.id);
+    comprobar('terminado el primero, el aviso se retira',
+      vistaLuego?.driverFinishingOtherTrip !== true);
     const d1 = await prisma.driver.findUnique({ where: { id: conCola } });
     comprobar('sigue ON_TRIP con el pasajero encolado esperando',
       d1?.status === 'ON_TRIP', String(d1?.status));

@@ -406,6 +406,13 @@ class TransportNotifier extends StateNotifier<TransportState> {
             : r.completedAt,
         driverLat: (payload['driverLat'] as num?)?.toDouble() ?? r.driverLat,
         driverLng: (payload['driverLng'] as num?)?.toDouble() ?? r.driverLng,
+        // Viaje encadenado. Si el mensaje lo dice, manda; si no lo trae (las
+        // actualizaciones de estado no lo calculan), solo se conserva mientras
+        // el viaje siga ACEPTADO: en cuanto arranca hacia la recogida, el
+        // conductor ya terminó el otro.
+        terminandoOtroViaje: payload.containsKey('driverFinishingOtherTrip')
+            ? payload['driverFinishingOtherTrip'] == true
+            : status == TransportStatus.accepted && r.terminandoOtroViaje,
       );
     });
   }

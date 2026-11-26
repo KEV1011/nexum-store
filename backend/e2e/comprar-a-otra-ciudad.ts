@@ -76,6 +76,9 @@ async function arrancarServidor(): Promise<ChildProcess> {
       PORT: String(PUERTO),
       NODE_ENV: 'development',
       OTP_DEV_CODE: OTP,
+      // Este guion mide la aritmética del flete contra el domicilio que puso
+      // CADA local, así que apaga el domicilio fijo de ZIPA (tarifa-domicilio).
+      DOMICILIO_FIJO_COP: 'comercio',
       JWT_SECRET: process.env['JWT_SECRET'] ?? 'e2e-secreto-largo-para-firmar-0123456789',
     },
     stdio: ['ignore', 'pipe', 'pipe'],

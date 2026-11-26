@@ -118,9 +118,35 @@ function _notify(errandId: string, errand: ClientErrandDTO): void {
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+/**
+ * La liquidación de un mandado: el servicio, menos la comisión. La misma que
+ * paga al mandadero y la que le devuelve su resumen al entregar.
+ */
+export async function liquidacionDeMandado(e: {
+  serviceFee: number;
+  operatorId: string | null;
+  driverId: string | null;
+  pickupLat: number | null;
+  pickupLng: number | null;
+}): Promise<{ finalFare: number; commission: number; netEarning: number }> {
+  const tasa = await tasaComision({
+    operatorId: e.operatorId,
+    driverId: e.driverId,
+    lat: e.pickupLat,
+    lng: e.pickupLng,
+  });
+  const commission = Math.round(e.serviceFee * tasa);
+  return { finalFare: e.serviceFee, commission, netEarning: e.serviceFee - commission };
+}
+
 export async function requestClientErrand(
   clientId: string,
   dto: RequestClientErrandDTO,
+  // Solo para quien llama desde el servidor: la compra a un comercio cobra el
+  // domicilio de los comercios, no el del mandado. NO va en el DTO a
+  // propósito: el DTO lo arma la ruta con lo que manda la app, y el precio no
+  // puede decidirlo el teléfono.
+  opciones: { serviceFee?: number } = {},
 ): Promise<ClientErrandWithPinsDTO> {
   const requestRef = nuevaReferencia('NXE');
   const errand = await prisma.errand.create({
@@ -137,7 +163,7 @@ export async function requestClientErrand(
       // El segundo sitio donde se busca repartidor, y el destino real del mapa.
       dropoffLat: dto.dropoffLat ?? null,
       dropoffLng: dto.dropoffLng ?? null,
-      serviceFee: ERRAND_SERVICE_FEE,
+      serviceFee: opciones.serviceFee ?? ERRAND_SERVICE_FEE,
       purchaseBudget: dto.purchaseBudget ?? null,
       notes: dto.notes ?? null,
       paymentMethod: dto.paymentMethod ?? null,
@@ -261,20 +287,14 @@ export async function updateErrandStatus(
     // Liquidación real del mandado: el serviceFee (menos comisión) alimenta la
     // billetera del mandadero, igual que viajes/pedidos/fletes.
     if (existing.driverId) {
-      const tasa = await tasaComision({
-        operatorId: existing.operatorId,
-        driverId: existing.driverId,
-        lat: existing.pickupLat,
-        lng: existing.pickupLng,
-      });
-      const commission = Math.round(existing.serviceFee * tasa);
+      const liq = await liquidacionDeMandado(existing);
       recordCompletedTrip(
         {
           tripId: errandId,
           origin: existing.pickupAddress,
           destination: existing.dropoffAddress,
-          grossFare: existing.serviceFee,
-          netEarning: existing.serviceFee - commission,
+          grossFare: liq.finalFare,
+          netEarning: liq.netEarning,
           completedAt: new Date().toISOString(),
         },
         existing.driverId,
