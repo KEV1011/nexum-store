@@ -27,6 +27,8 @@ import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
 import 'package:nexum_client/features/cart/data/compra_api.dart';
 import 'package:nexum_client/features/cart/presentation/providers/cart_provider.dart';
+import 'package:nexum_client/features/cart/presentation/widgets/'
+    'cart_summary.dart';
 import 'package:nexum_client/features/payments/presentation/providers/'
     'payment_method_provider.dart';
 import 'package:nexum_client/features/payments/presentation/widgets/'
@@ -218,17 +220,21 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
               ),
             ),
 
-          const Divider(height: 28),
-          _Fila(
-            etiqueta: 'Subtotal',
-            valor: CurrencyFormatter.format(cart.subtotal),
+          const SizedBox(height: AppConstants.spacingM),
+          // El total se dice de una vez, con el domicilio incluido (pedido del
+          // dueño): quien no ve cuánto va a pagar no pide. El domicilio es el
+          // de la ficha pública del local, que el servidor ya resuelve con la
+          // MISMA regla (`domicilioDeTienda`) con la que cobra esta compra.
+          CartSummary(
+            subtotal: cart.subtotal,
+            deliveryFee: cart.deliveryFee,
+            total: cart.total,
           ),
           const SizedBox(height: 6),
           Text(
-            // Una sola línea, en el tono de cualquier app de domicilios: el
-            // total final sale del recibo del local, y eso se dice sin el
-            // recuadro de advertencia que el dueño pidió retirar.
-            'Más el domicilio. El total final es el del recibo de la compra.',
+            // Una sola línea, sin el recuadro de advertencia que el dueño pidió
+            // retirar: el repartidor paga lo que diga el recibo del local.
+            'Si algún precio cambió en el local, se ajusta al recibo.',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 12.5,
@@ -287,7 +293,7 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            'Al repartidor, cuando te entregue: la compra más el domicilio.',
+            'Le pagas el total al repartidor cuando te entregue.',
             style: TextStyle(
               fontFamily: 'Inter',
               fontSize: 12.5,
@@ -333,40 +339,6 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _Fila extends StatelessWidget {
-  const _Fila({required this.etiqueta, required this.valor});
-
-  final String etiqueta;
-  final String valor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          etiqueta,
-          style: TextStyle(
-            fontFamily: 'Inter',
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: context.textPrimaryColor,
-          ),
-        ),
-        Text(
-          valor,
-          style: TextStyle(
-            fontFamily: 'Inter',
-            fontSize: 15,
-            fontWeight: FontWeight.w800,
-            color: context.textPrimaryColor,
-          ),
-        ),
-      ],
     );
   }
 }
