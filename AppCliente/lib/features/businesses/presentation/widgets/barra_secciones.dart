@@ -291,7 +291,7 @@ mixin SaltoASecciones<T extends StatefulWidget> on State<T> {
   /// número de intentos está acotado: si no se llega, la carta se queda donde
   /// esté y se sigue pudiendo desplazar a mano.
   Future<void> irASeccion(String seccion) async {
-    const maxIntentos = 8;
+    const maxIntentos = 12;
     final indiceDestino = ordenSecciones.indexOf(seccion);
     if (indiceDestino == -1) return;
     setState(() => seccionActiva = seccion);
@@ -307,13 +307,24 @@ mixin SaltoASecciones<T extends StatefulWidget> on State<T> {
           // esta barra— y deja el encabezado justo debajo. Sumar ese alto
           // aquí lo contaba dos veces: el encabezado caía casi 50 px más
           // abajo (lo cazó la prueba del salto).
+          //
+          // Y se repite hasta que deja de mover la carta. La posición del
+          // encabezado se calcula con el alto ESTIMADO de los platos que aún
+          // no se han construido, y los de verdad no miden lo mismo (con foto
+          // o sin ella, uno o dos renglones): el primer salto se quedaba corto
+          // y el chip decía «Bebidas» con las hamburguesas en pantalla. Al
+          // llegar cerca, lo de alrededor ya está medido y el segundo salto
+          // cae exacto; el tercero no se mueve y ahí se para.
+          final antes = scrollCarta.position.pixels;
           await Scrollable.ensureVisible(
             ctx,
-            duration: const Duration(milliseconds: 320),
+            duration: Duration(milliseconds: intento == 0 ? 320 : 140),
             curve: Curves.easeOutCubic,
             alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
           );
-          return;
+          if (!mounted || !scrollCarta.hasClients) return;
+          if ((scrollCarta.position.pixels - antes).abs() < 0.5) return;
+          continue;
         }
         // No está construida. Si alguna construida va DESPUÉS en el orden, la
         // que buscamos quedó arriba; si no, está más abajo.
