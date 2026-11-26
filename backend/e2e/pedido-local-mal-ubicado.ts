@@ -29,8 +29,10 @@ const ENTREGA = { lat: 7.3725, lng: -72.6481 }; // Universidad de Pamplona, apro
 const EN_BOGOTA = { lat: 4.6, lng: -74.08 };
 
 async function main(): Promise<void> {
-  const { placeClientOrder, acceptOrderByBusiness, markOrderReadyByBusiness } =
-    await import('../src/services/client.service');
+  const {
+    placeClientOrder, acceptOrderByBusiness, markOrderReadyByBusiness,
+    getClientOrderById, declararEtaDePedido,
+  } = await import('../src/services/client.service');
   const { createBusinessProduct } = await import('../src/services/business.service');
   const { getOrderOfferInfo } = await import('../src/services/order-offer.service');
   const { warmMunicipalities } = await import('../src/services/municipality.service');
@@ -108,6 +110,14 @@ async function main(): Promise<void> {
     `ancla=${info1?.lat},${info1?.lng}`);
   comprobar('la oferta le llega al repartidor de Pamplona',
     ofertas.some((o) => o.orderId === p1 && o.id === repartidor.id), `ofertas=${JSON.stringify(ofertas)}`);
+  // El mapa del cliente pintaba el punto GUARDADO: veía su pedido saliendo de
+  // otra ciudad mientras el repartidor iba al sitio correcto.
+  const vista1 = await getClientOrderById(cliente.id, p1);
+  comprobar('el mapa del cliente tampoco pinta el local en Bogotá',
+    !!vista1 && vista1.businessLat != null && Math.abs(vista1.businessLat - EN_BOGOTA.lat) > 1,
+    `local=${vista1?.businessLat},${vista1?.businessLng}`);
+  comprobar('y pinta el MISMO punto al que va el repartidor',
+    !!vista1 && !!info1 && vista1.businessLat === info1.lat && vista1.businessLng === info1.lng);
   matching.cancelSearchRetry(`order:${p1}`);
   await prisma.order.update({ where: { id: p1 }, data: { status: 'CANCELLED' } });
   await esperar(20_000); // que venza la oferta en curso
@@ -124,6 +134,30 @@ async function main(): Promise<void> {
     !!info2 && Math.abs(info2.lat - local.lat) < 1e-6 && Math.abs(info2.lng - local.lng) < 1e-6,
     `ancla=${info2?.lat},${info2?.lng}`);
   comprobar('y la oferta le llega', ofertas.some((o) => o.orderId === p2 && o.id === repartidor.id));
+  const vista2 = await getClientOrderById(cliente.id, p2);
+  comprobar('el cliente ve el local donde está',
+    Math.abs((vista2?.businessLat ?? 0) - local.lat) < 1e-6
+      && Math.abs((vista2?.businessLng ?? 0) - local.lng) < 1e-6,
+    `local=${vista2?.businessLat},${vista2?.businessLng}`);
+
+  console.log('\n── 3. «Entrego en X minutos» en un PEDIDO ──');
+  // El botón salía también en los pedidos y mandaba su id a la ruta de
+  // mandados: «Este mandado ya no está activo o no es tuyo».
+  matching.cancelSearchRetry(`order:${p2}`);
+  await prisma.order.update({
+    where: { id: p2 }, data: { driverId: repartidor.id, status: 'DRIVER_TO_PICKUP' },
+  });
+  const eta = await declararEtaDePedido(repartidor.id, p2, 20);
+  comprobar('el repartidor asignado lo declara', eta.ok, JSON.stringify(eta));
+  comprobar('y el cliente lo lee como su tiempo de llegada',
+    (await getClientOrderById(cliente.id, p2))?.etaMinutes === 20);
+  const ajeno = await declararEtaDePedido('otro-conductor', p2, 30);
+  comprobar('otro conductor no puede', !ajeno.ok && /no es tuyo/.test(ajeno.motivo), JSON.stringify(ajeno));
+  const raro = await declararEtaDePedido(repartidor.id, p2, 1);
+  comprobar('un tiempo absurdo se rechaza', !raro.ok);
+  await prisma.order.update({ where: { id: p2 }, data: { status: 'DELIVERED' } });
+  const tarde = await declararEtaDePedido(repartidor.id, p2, 15);
+  comprobar('un pedido entregado ya no admite promesas', !tarde.ok);
 
   await limpiar();
   console.log(fallos === 0 ? '\nTODO EN VERDE' : `\n${fallos} FALLO(S)`);

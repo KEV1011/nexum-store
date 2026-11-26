@@ -18,10 +18,21 @@ import 'package:nexum_driver/core/network/dio_client.dart';
 /// Devuelve el motivo en vez de tragárselo porque los rechazos son
 /// accionables: «di un tiempo entre 5 y 180 minutos» se arregla tocando otro
 /// chip, y «este mandado ya no es tuyo» explica por qué no pasó nada.
-Future<String?> enviarEtaDeMandado(String errandId, int minutos) async {
+///
+/// [esPedido]: un pedido a un negocio va a SU ruta. La oferta de un pedido
+/// lleva el detalle de la compra (`errand`), así que el botón también sale en
+/// los pedidos — y mandar su id a la ruta de mandados respondía «este mandado
+/// ya no está activo o no es tuyo» con el pedido perfectamente vivo.
+Future<String?> enviarEtaDeMandado(
+  String errandId,
+  int minutos, {
+  bool esPedido = false,
+}) async {
   try {
     await DioClient().dio.post<Map<String, dynamic>>(
-      '/driver/errands/$errandId/eta',
+      esPedido
+          ? '/driver/orders/$errandId/eta'
+          : '/driver/errands/$errandId/eta',
       data: {'minutos': minutos},
     );
     return null;

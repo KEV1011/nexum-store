@@ -51,6 +51,7 @@ import {
   type DriverOrderStatus,
 } from '../services/estado-por-conductor.service';
 import {
+  declararEtaDePedido,
   driverUpdateTripStatus,
   rateTripPassenger,
   TripDriverError,
@@ -1291,6 +1292,25 @@ router.post('/errands/:id/eta', async (req, res) => {
     return;
   }
   const r = await declararEtaDeMandado(
+    driverId,
+    req.params['id']!,
+    (req.body as { minutos?: unknown }).minutos,
+  );
+  if (!r.ok) {
+    res.status(400).json({ success: false, error: r.motivo });
+    return;
+  }
+  res.json({ success: true, data: { minutos: r.minutos } });
+});
+
+/** POST /driver/orders/:id/eta — lo mismo que la de arriba, en un pedido. */
+router.post('/orders/:id/eta', async (req, res) => {
+  const driverId = req.driverId;
+  if (!driverId) {
+    res.status(401).json({ success: false, error: 'No autenticado' });
+    return;
+  }
+  const r = await declararEtaDePedido(
     driverId,
     req.params['id']!,
     (req.body as { minutos?: unknown }).minutos,

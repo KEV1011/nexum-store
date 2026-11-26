@@ -60,45 +60,10 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
   });
   if (!o) return null;
 
-  // ── ¿De dónde recoge el repartidor? ────────────────────────────────────────
-  //
-  // Normalmente del comercio. Pero en la última milla de una encomienda el
-  // comercio está en OTRA CIUDAD: la caja quedó en la taquilla de destino, en el
-  // punto donde el conductor del bus firmó el acta. Anclar al comercio buscaría
-  // repartidores a cientos de kilómetros y no encontraría a ninguno.
-  // `hubAt` y no solo el estado: si el repartidor de la última milla lo
-  // retoma o lo suelta, el pedido ya no está en AT_DESTINATION_HUB y la caja
-  // sigue en la taquilla, no en el comercio de la otra ciudad.
+  // De dónde recoge: la MISMA regla que el mapa del cliente (ver abajo).
   const enDestino = (o.status === 'AT_DESTINATION_HUB' || o.hubAt != null)
     && o.hubLat != null && o.hubLng != null;
-  // Fuera de la última milla, el punto del local se usa SOLO si es de fiar:
-  // la MISMA regla que la compra en un local sin registrar (`anclaDeCompra`).
-  // Un local geocodificado sin ciudad puede haber quedado guardado a cientos
-  // de kilómetros, y entonces el despacho buscaba repartidores alrededor de
-  // ese punto y no le salía a nadie aunque el repartidor estuviera en la
-  // puerta. La referencia es la entrega del cliente —el único punto que pone
-  // alguien que de verdad está ahí—; sin ella, el centro de la ciudad del
-  // local, y solo al final el de Pamplona.
-  let ancla: { lat: number; lng: number };
-  if (enDestino) {
-    ancla = { lat: o.hubLat!, lng: o.hubLng! };
-  } else {
-    const plaza = o.business.citySlug ? await coordsOf(o.business.citySlug) : null;
-    let local = o.business.lat != null && o.business.lng != null
-      ? { lat: o.business.lat, lng: o.business.lng }
-      : null;
-    if (local && !o.business.citySlug && !(await plazaDeCoordenadas(local.lat, local.lng))) local = null;
-    const entrega = o.deliveryLat != null && o.deliveryLng != null
-      ? { lat: o.deliveryLat, lng: o.deliveryLng }
-      : null;
-    ancla = anclaDeCompra(local, plaza, entrega, PAMPLONA);
-    if (localLejosDeLaEntrega(local, entrega)) {
-      console.warn(
-        `[Pedido] «${o.business.name}» (${o.business.id}) tiene su punto lejos de la entrega: ` +
-          `no se usa para buscar repartidor. Hay que fijar su ubicación en el mapa.`,
-      );
-    }
-  }
+  const ancla = await puntoDeRecogidaDePedido(o, o.business);
   const businessLat = ancla.lat;
   const businessLng = ancla.lng;
   return {
@@ -138,4 +103,56 @@ export async function getOrderOfferInfo(orderId: string): Promise<{
     lat: businessLat,
     lng: businessLng,
   };
+}
+
+/**
+ * ¿De dónde recoge el repartidor un pedido? Una sola regla para la oferta del
+ * repartidor Y para el mapa del cliente: si cada uno leyera el punto a su
+ * manera, el cliente vería su pedido saliendo de otra ciudad (el punto
+ * guardado de un local mal geocodificado) mientras el repartidor va al sitio
+ * correcto.
+ *
+ * Normalmente del comercio. Pero en la última milla de una encomienda el
+ * comercio está en OTRA CIUDAD: la caja quedó en la taquilla de destino, en el
+ * punto donde el conductor del bus firmó el acta. `hubAt` y no solo el estado:
+ * si el repartidor de la última milla lo retoma o lo suelta, el pedido ya no
+ * está en AT_DESTINATION_HUB y la caja sigue en la taquilla.
+ *
+ * Fuera de la última milla, el punto del local se usa SOLO si es de fiar: la
+ * MISMA regla que la compra en un local sin registrar (`anclaDeCompra`). La
+ * referencia es la entrega del cliente —el único punto que pone alguien que
+ * de verdad está ahí—; sin ella, el centro de la ciudad del local, y solo al
+ * final el de Pamplona.
+ */
+export async function puntoDeRecogidaDePedido(
+  o: {
+    status: string;
+    hubAt: Date | null;
+    hubLat: number | null;
+    hubLng: number | null;
+    deliveryLat: number | null;
+    deliveryLng: number | null;
+  },
+  business: { id: string; name: string; lat: number | null; lng: number | null; citySlug: string | null },
+): Promise<{ lat: number; lng: number }> {
+  const enDestino = (o.status === 'AT_DESTINATION_HUB' || o.hubAt != null)
+    && o.hubLat != null && o.hubLng != null;
+  if (enDestino) return { lat: o.hubLat!, lng: o.hubLng! };
+
+  const plaza = business.citySlug ? await coordsOf(business.citySlug) : null;
+  let local = business.lat != null && business.lng != null
+    ? { lat: business.lat, lng: business.lng }
+    : null;
+  if (local && !business.citySlug && !(await plazaDeCoordenadas(local.lat, local.lng))) local = null;
+  const entrega = o.deliveryLat != null && o.deliveryLng != null
+    ? { lat: o.deliveryLat, lng: o.deliveryLng }
+    : null;
+  if (localLejosDeLaEntrega(local, entrega)) {
+    console.warn(
+      `[Pedido] «${business.name}» (${business.id}) tiene su punto lejos de la entrega: ` +
+        `no se usa para buscar repartidor. Hay que fijar su ubicación en el mapa.`,
+    );
+  }
+  const a = anclaDeCompra(local, plaza, entrega, PAMPLONA);
+  return { lat: a.lat, lng: a.lng };
 }

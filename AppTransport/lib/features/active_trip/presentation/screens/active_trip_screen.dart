@@ -1313,7 +1313,9 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
                 const SizedBox(width: AppConstants.spacingS),
               ],
 
-              // «Entrego en X minutos», solo en los mandados.
+              // «Entrego en X minutos», en mandados y pedidos (la oferta de un
+              // pedido también lleva `errand`, así que `isErrand` es cierto en
+              // los dos; la ruta se elige al enviar).
               //
               // En una compra a un local que no está conectado no hay cocina
               // que declare un tiempo ni ruta que medir hasta que la compra
@@ -1410,7 +1412,11 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     );
     if (minutos == null || !mounted) return;
 
-    final motivo = await enviarEtaDeMandado(trip.request.id, minutos);
+    final motivo = await enviarEtaDeMandado(
+      trip.request.orderId ?? trip.request.id,
+      minutos,
+      esPedido: trip.request.isOrder,
+    );
     if (!mounted) return;
     if (motivo != null) {
       AppSnackbar.showError(context, motivo);
