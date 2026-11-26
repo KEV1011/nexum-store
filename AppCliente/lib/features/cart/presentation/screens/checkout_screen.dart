@@ -13,11 +13,14 @@ import 'package:nexum_client/features/addresses/presentation/providers/'
     'addresses_provider.dart';
 import 'package:nexum_client/features/businesses/domain/entities/'
     'business_entity.dart';
+import 'package:nexum_client/features/cart/data/compra_api.dart';
 import 'package:nexum_client/features/cart/data/envio_api.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
     'cart_provider.dart';
 import 'package:nexum_client/features/cart/presentation/widgets/'
     'cart_summary.dart';
+import 'package:nexum_client/features/errands/presentation/providers/'
+    'errand_provider.dart';
 import 'package:nexum_client/features/intercity/domain/entities/'
     'intercity_entity.dart';
 import 'package:nexum_client/features/orders/presentation/providers/'
@@ -75,6 +78,29 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   /// dos direcciones seguidas recibiría la cotización de la primera después
   /// de la segunda, y vería el precio equivocado sin que nada lo delate.
   int _cotizacionSeq = 0;
+
+  /// El servidor rechazó el pedido directo porque el local no lo atiende
+  /// (el carrito venía con datos viejos del local).
+  bool _forzarMandado = false;
+
+  /// ¿Este pedido sale como compra por mandado?
+  ///
+  /// Un local que todavía no es aliado de ZIPA —o que no está al día— no
+  /// tiene a nadie en el portal para aceptar el pedido. En vez de decírselo
+  /// al cliente (que lee «no está recibiendo pedidos» y no vuelve), el MISMO
+  /// carrito sale como compra: el repartidor que acepta ve la lista, va al
+  /// local, compra y lo entrega. Lo dicen tres fuentes, de la más fresca a la
+  /// más vieja: el rechazo del servidor, la cotización y el carrito.
+  bool get _porMandado =>
+      _forzarMandado ||
+      (_cotizacion?.comprarPorMandado ?? false) ||
+      ref.read(cartProvider).business?.claimed == false;
+
+  /// La compra la paga el repartidor en el mostrador y el cliente se la
+  /// devuelve al recibirla: el pago EN LÍNEA (un monto fijo cobrado al pedir)
+  /// no sirve, y si quedó elegido de antes se cae a efectivo.
+  static MetodoPago _metodoDeCompra(MetodoPago m) =>
+      m.exigePasarela ? MetodoPago.efectivo : m;
 
   @override
   void initState() {
@@ -238,6 +264,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       return;
     }
 
+    if (_porMandado) {
+      await _comprarPorMandado(cart, entrega);
+      return;
+    }
+
     setState(() => _placing = true);
 
     final String orderId;
@@ -256,6 +287,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             // salía del teléfono.
             paymentMethod: ref.read(metodoPagoEfectivoProvider).valorApi,
           );
+    } on ComprarPorMandado {
+      // El local no atiende pedidos directos (el carrito traía datos viejos):
+      // el mismo carrito sale como compra, sin enseñarle un rechazo a nadie.
+      if (!mounted) return;
+      setState(() {
+        _placing = false;
+        _forzarMandado = true;
+      });
+      await _comprarPorMandado(cart, entrega);
+      return;
     } catch (e) {
       // El negocio nunca recibió el pedido: informar en lugar de simular. Y
       // decir el motivo REAL que dio el servidor —producto agotado, negocio
@@ -309,6 +350,64 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     context.go(AppRoutes.orderPath(orderId));
   }
 
+  /// El pedido a un local que no es aliado: sale como compra por mandado —
+  /// el repartidor que la acepta ve la lista, va al local, compra y lo
+  /// entrega— y se sigue en la pantalla del mandado, que es la de siempre.
+  Future<void> _comprarPorMandado(
+    CartState cart,
+    ({String texto, double? lat, double? lng}) entrega,
+  ) async {
+    final negocio = cart.business;
+    if (negocio == null) return;
+    setState(() => _placing = true);
+    try {
+      final r = await ref.read(compraApiProvider).comprar(
+            businessId: negocio.id,
+            items: lineasDeCompra([
+              for (final i in cart.items)
+                (
+                  productId: i.product.id,
+                  quantity: i.quantity,
+                  opciones: i.optionsSummary,
+                  notas: i.notes,
+                ),
+            ]),
+            direccion: entrega.texto,
+            lat: entrega.lat,
+            lng: entrega.lng,
+            notas: _notesController.text,
+            metodoPago:
+                _metodoDeCompra(ref.read(metodoPagoEfectivoProvider)).valorApi,
+          );
+      if (!mounted) return;
+      ref.read(cartProvider.notifier).clear();
+      AppSnackbar.showSuccess(
+        context,
+        'Pedido enviado. Ya buscamos quién te lo lleve.',
+      );
+      // El seguimiento lee el mandado ACTIVO del proveedor y este lo creó el
+      // servidor: hay que dárselo antes de ir, o la pantalla se abre vacía y
+      // rebota al inicio.
+      final siguiendo =
+          await ref.read(errandProvider.notifier).seguirMandado(r.errandId);
+      if (!mounted) return;
+      if (!siguiendo) {
+        AppSnackbar.showError(
+          context,
+          'Tu pedido quedó hecho, pero no pudimos abrir su seguimiento. '
+          'Revisa tu conexión.',
+        );
+        context.go('/home');
+        return;
+      }
+      context.go(AppRoutes.errandStatus);
+    } on CompraError catch (e) {
+      if (!mounted) return;
+      setState(() => _placing = false);
+      AppSnackbar.showError(context, e.motivo);
+    }
+  }
+
   /// Inicia el pago en línea y cierra el ciclo dentro de la app (Wompi + sondeo
   /// de estado). Si algo falla, el pedido sigue su curso (pago contra entrega).
   Future<void> _startOnlinePayment({
@@ -360,7 +459,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           // El selector de ciudad solo existe si el comercio DECLARÓ destinos.
           // Ofrecerlo cuando no despacha a ninguna parte sería un formulario
           // que solo lleva a un rechazo.
-          if (cart.business?.despachaAOtrasCiudades ?? false) ...[
+          // Por mandado la compra es local: el repartidor va al mostrador y
+          // lo trae a la misma ciudad.
+          if (!_porMandado && (cart.business?.despachaAOtrasCiudades ?? false)) ...[
             _SelectorDestino(
               destino: _destino,
               onCambiar: () => _elegirDestino(cart.business!),
@@ -435,48 +536,60 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           // aparecer sin publicar una versión de la app, y el pago en línea
           // no se ofrece si no hay pasarela configurada (un botón que promete
           // cobrar y no cobra deja al repartidor entregando sin recibir).
-          ...ref.watch(metodosDePagoProvider).map(
+          ...ref
+              .watch(metodosDePagoProvider)
+              // Por mandado el repartidor paga en el mostrador y cobra al
+              // entregar: el pago en línea no aplica (ver `_metodoDeCompra`).
+              .where((m) => !_porMandado || !m.exigePasarela)
+              .map(
                 (metodo) => OpcionMetodoPago(
                   metodo: metodo,
-                  selected: ref.watch(metodoPagoEfectivoProvider) == metodo,
+                  selected: (_porMandado
+                          ? _metodoDeCompra(ref.watch(metodoPagoEfectivoProvider))
+                          : ref.watch(metodoPagoEfectivoProvider)) ==
+                      metodo,
                   onTap: () {
                     // ignore: discarded_futures — se recuerda en segundo plano.
                     ref.read(metodoPagoProvider.notifier).elegir(metodo);
                   },
                 ),
               ),
-          const SizedBox(height: AppConstants.spacingL),
-          const _SectionTitle(
-            icon: Icons.local_offer_rounded,
-            title: 'Código promocional',
-          ),
-          const SizedBox(height: AppConstants.spacingS),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _promoController,
-                  textCapitalization: TextCapitalization.characters,
-                  decoration: const InputDecoration(hintText: 'Ej: BIENVENIDO'),
-                  onSubmitted: (_) => _applyPromo(cart),
+          // El cupón aplica a pedidos que cobra la caja; la compra por mandado
+          // se paga con el recibo del local y no tiene dónde restarlo.
+          if (!_porMandado) ...[
+            const SizedBox(height: AppConstants.spacingL),
+            const _SectionTitle(
+              icon: Icons.local_offer_rounded,
+              title: 'Código promocional',
+            ),
+            const SizedBox(height: AppConstants.spacingS),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _promoController,
+                    textCapitalization: TextCapitalization.characters,
+                    decoration: const InputDecoration(hintText: 'Ej: BIENVENIDO'),
+                    onSubmitted: (_) => _applyPromo(cart),
+                  ),
                 ),
-              ),
-              const SizedBox(width: AppConstants.spacingS),
-              SizedBox(
-                height: 48,
-                child: OutlinedButton(
-                  onPressed: _promoValidating ? null : () => _applyPromo(cart),
-                  child: _promoValidating
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Aplicar'),
+                const SizedBox(width: AppConstants.spacingS),
+                SizedBox(
+                  height: 48,
+                  child: OutlinedButton(
+                    onPressed: _promoValidating ? null : () => _applyPromo(cart),
+                    child: _promoValidating
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Aplicar'),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
           const SizedBox(height: AppConstants.spacingL),
           const _SectionTitle(
             icon: Icons.receipt_long_rounded,
@@ -516,6 +629,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   ),
                 ),
               ],
+            ),
+          ],
+          if (_porMandado) ...[
+            const SizedBox(height: AppConstants.spacingS),
+            // Una sola línea neutra: el repartidor compra en el mostrador y lo
+            // que se paga es lo del recibo, que puede no ser el precio de la
+            // carta. Sin avisos de «no está recibiendo pedidos».
+            Text(
+              'El total final es el del recibo de la compra en el local.',
+              style: TextStyle(
+                fontSize: 12,
+                color: context.textSecondaryColor,
+              ),
             ),
           ],
           const SizedBox(height: AppConstants.spacingM),

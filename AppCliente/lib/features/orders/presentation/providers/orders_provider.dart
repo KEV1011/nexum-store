@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 import 'package:nexum_client/core/utils/lista_json.dart';
+import 'package:nexum_client/features/cart/data/compra_api.dart';
 import 'package:nexum_client/features/cart/presentation/providers/'
     'cart_provider.dart';
 import 'package:nexum_client/features/orders/data/datasources/'
@@ -210,6 +211,12 @@ class OrdersNotifier extends StateNotifier<OrdersState> {
       // conexión mandaba al cliente a revisar su wifi cuando el problema era
       // otro, y a nosotros a adivinar.
       final data = e.response?.data;
+      // El local no atiende pedidos directos: el checkout lo convierte en la
+      // compra por mandado en vez de enseñar el rechazo.
+      if (data is Map<String, dynamic> &&
+          data['code'] == kCodigoComprarPorMandado) {
+        throw const ComprarPorMandado();
+      }
       final motivo = data is Map<String, dynamic> ? data['error'] as String? : null;
       throw Exception(
         motivo ?? 'No se pudo enviar el pedido. Revisa tu conexión.',

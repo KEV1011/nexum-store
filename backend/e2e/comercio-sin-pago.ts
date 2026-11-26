@@ -108,6 +108,11 @@ async function main(): Promise<void> {
   comprobar('sin contarle al cliente que el local debe',
     !/pag[oóa]|plan|deud|debe/i.test(motivo), motivo);
 
+  const errPedido = await pedir().then(() => null, (e: unknown) => e);
+  comprobar('el rechazo lleva el código con que la app lo vuelve compra sola',
+    (errPedido as { code?: string } | null)?.code === 'comprar_por_mandado',
+    (errPedido as { code?: string } | null)?.code);
+
   const compra = await comprar();
   comprobar('la compra por mandado SÍ entra', !!compra.errand?.id);
   const mandado = await prisma.errand.findUniqueOrThrow({
