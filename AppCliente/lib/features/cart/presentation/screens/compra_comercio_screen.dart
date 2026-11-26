@@ -79,15 +79,15 @@ class _CompraComercioScreenState extends ConsumerState<CompraComercioScreen> {
     try {
       final r = await ref.read(compraApiProvider).comprar(
         businessId: negocio.id,
-        items: [
+        items: lineasDeCompra([
           for (final i in cart.items)
-            {
-              'productId': i.product.id,
-              'quantity': i.quantity,
-              if (i.notes != null && i.notes!.trim().isNotEmpty)
-                'notes': i.notes!.trim(),
-            },
-        ],
+            (
+              productId: i.product.id,
+              quantity: i.quantity,
+              opciones: i.optionsSummary,
+              notas: i.notes,
+            ),
+        ]),
         direccion: _direccion.text.trim(),
         lat: _lat,
         lng: _lng,

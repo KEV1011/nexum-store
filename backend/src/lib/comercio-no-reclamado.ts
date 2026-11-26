@@ -58,6 +58,18 @@ export function atiendeDirecto(c: { claimed: boolean; unpaidSince?: Date | null 
   return c.claimed && c.unpaidSince == null;
 }
 
+/**
+ * El código con que la caja rechaza un pedido directo a un comercio que no lo
+ * atiende. La app NO enseña el mensaje: con este código convierte el mismo
+ * carrito en la compra por mandado y sigue, porque el cliente que lee «no
+ * está recibiendo pedidos» cierra la app y no vuelve.
+ */
+export const CODIGO_COMPRAR_POR_MANDADO = 'comprar_por_mandado';
+
+export class ComercioSinPortalError extends Error {
+  readonly code = CODIGO_COMPRAR_POR_MANDADO;
+}
+
 /** Una línea de la lista de compras, ya resuelta contra el catálogo. */
 export interface LineaDeCompra {
   nombre: string;

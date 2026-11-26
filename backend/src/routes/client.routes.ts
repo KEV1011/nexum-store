@@ -594,6 +594,10 @@ router.get('/businesses/:id/envio', async (req, res) => {
         etaMinutes: envio.etaMinutes,
         promisedAt: envio.promisedAt?.toISOString() ?? null,
         rechazo: envio.rechazo,
+        // El local no recibe pedidos directos (no es aliado, o no está al
+        // día): el pedido sale como compra por mandado — va un repartidor de
+        // ZIPA, compra en su mostrador y lo entrega. La app lo hace sola.
+        comprarPorMandado: biz.claimed === false,
       },
     });
   } catch {
@@ -653,7 +657,14 @@ router.post('/orders', clientAuthMiddleware, clientRequestRateLimit, async (req,
     // (acceptOrderByBusiness → startOrderMatchingCycle), para que el conductor
     // no espere en la puerta mientras se cocina.
   } catch (err) {
-    res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Failed to place order' });
+    // `code` le dice a la app que este local va por mandado de compra: la
+    // app convierte el carrito sola en vez de enseñarle el rechazo al cliente.
+    const code = (err as { code?: unknown }).code;
+    res.status(400).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to place order',
+      ...(typeof code === 'string' ? { code } : {}),
+    });
   }
 });
 

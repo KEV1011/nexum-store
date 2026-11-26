@@ -419,7 +419,8 @@ export async function placeClientOrder(
   // esperando una comida que nadie empezó. Su camino es el mandado de compra
   // (`comprarEnComercio`), y el mensaje lo dice en vez de dejarlo atascado.
   {
-    const { motivoParaNoPedirDirecto } = await import('../lib/comercio-no-reclamado');
+    const { motivoParaNoPedirDirecto, ComercioSinPortalError } =
+      await import('../lib/comercio-no-reclamado');
     const sinReclamar = await prisma.business.findUnique({
       where: { id: dto.businessId },
       select: { name: true, claimed: true, unpaidSince: true },
@@ -427,7 +428,7 @@ export async function placeClientOrder(
     const motivo = sinReclamar
       ? motivoParaNoPedirDirecto(sinReclamar)
       : null;
-    if (motivo) throw new Error(motivo);
+    if (motivo) throw new ComercioSinPortalError(motivo);
   }
   // ── ¿Este pedido cruza de ciudad, y cuánto cuesta moverlo? ─────────────────
   //

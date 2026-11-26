@@ -10,6 +10,43 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:nexum_client/core/network/api_client.dart';
 
+/// El servidor rechazó un pedido DIRECTO porque el local no lo atiende (no es
+/// aliado todavía, o no está al día): ese carrito tiene que salir como compra
+/// por mandado. El checkout la crea solo en vez de enseñar el rechazo.
+class ComprarPorMandado implements Exception {
+  const ComprarPorMandado();
+}
+
+/// El código con que el servidor marca ese rechazo
+/// (`CODIGO_COMPRAR_POR_MANDADO` en `lib/comercio-no-reclamado.ts`).
+const kCodigoComprarPorMandado = 'comprar_por_mandado';
+
+/// Las líneas del carrito tal como las lee el repartidor en el mostrador.
+///
+/// Lo elegido en las opciones («Grande · sin cebolla») va en la nota de la
+/// línea: la compra no resuelve opciones, y sin esto el repartidor compraría
+/// la picada pequeña que nadie pidió.
+List<Map<String, dynamic>> lineasDeCompra(
+  List<({String productId, int quantity, String? opciones, String? notas})>
+      items,
+) =>
+    [
+      for (final i in items)
+        {
+          'productId': i.productId,
+          'quantity': i.quantity,
+          if (_nota(i.opciones, i.notas) case final String n) 'notes': n,
+        },
+    ];
+
+String? _nota(String? opciones, String? notas) {
+  final partes = [
+    if (opciones != null && opciones.trim().isNotEmpty) opciones.trim(),
+    if (notas != null && notas.trim().isNotEmpty) notas.trim(),
+  ];
+  return partes.isEmpty ? null : partes.join(' · ');
+}
+
 class CompraError implements Exception {
   CompraError(this.motivo);
   final String motivo;

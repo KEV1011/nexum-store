@@ -25,6 +25,7 @@ class CotizacionEnvio {
     this.destCityLabel,
     this.promisedAt,
     this.rechazo,
+    this.comprarPorMandado = false,
   });
 
   factory CotizacionEnvio.fromJson(Map<String, dynamic> j) => CotizacionEnvio(
@@ -39,6 +40,7 @@ class CotizacionEnvio {
         etaMinutes: (j['etaMinutes'] as num?)?.toInt() ?? 0,
         promisedAt: DateTime.tryParse(j['promisedAt'] as String? ?? ''),
         rechazo: j['rechazo'] as String?,
+        comprarPorMandado: j['comprarPorMandado'] as bool? ?? false,
       );
 
   /// Cruza de ciudad Y el comercio despacha allá.
@@ -69,6 +71,12 @@ class CotizacionEnvio {
   /// Por qué NO se puede entregar ahí, con las ciudades a las que sí se
   /// despacha. Null = adelante.
   final String? rechazo;
+
+  /// El local no recibe pedidos directos (no es aliado todavía, o no está al
+  /// día): el pedido sale como compra por mandado — va un repartidor de ZIPA,
+  /// compra en su mostrador y lo entrega. El checkout lo hace solo, sin
+  /// enseñarle al cliente un rechazo.
+  final bool comprarPorMandado;
 
   bool get puedePedir => rechazo == null;
 }

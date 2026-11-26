@@ -32,9 +32,14 @@ Widget _envuelta({
 /// Una carta mínima con la barra fijada y el salto compartido: lo mismo que
 /// montan el detalle del local y la carta de la mesa.
 class _Carta extends StatefulWidget {
-  const _Carta({required this.secciones, required this.platos});
+  const _Carta({required this.secciones, required this.platos, this.alturaPlato});
   final List<String> secciones;
   final int platos;
+
+  /// Alto de cada plato según su sección y su posición. Por defecto todos
+  /// miden 100: la carta de verdad no, porque un plato con foto o con el
+  /// nombre en dos renglones es más alto que uno sin ella.
+  final double Function(int seccion, int plato)? alturaPlato;
 
   @override
   State<_Carta> createState() => _CartaState();
@@ -59,13 +64,20 @@ class _CartaState extends State<_Carta> with SaltoASecciones<_Carta> {
             onSeleccion: (s) => unawaited(irASeccion(s)),
           ),
         ),
-        for (final s in widget.secciones) ...[
+        for (var k = 0; k < widget.secciones.length; k++) ...[
           SliverToBoxAdapter(
-            child: SizedBox(key: claveDeSeccion(s), height: 40, child: Text('Encabezado $s')),
+            child: SizedBox(
+              key: claveDeSeccion(widget.secciones[k]),
+              height: 40,
+              child: Text('Encabezado ${widget.secciones[k]}'),
+            ),
           ),
           SliverList.builder(
             itemCount: widget.platos,
-            itemBuilder: (_, i) => SizedBox(height: 100, child: Text('$s plato $i')),
+            itemBuilder: (_, i) => SizedBox(
+              height: widget.alturaPlato?.call(k, i) ?? 100,
+              child: Text('${widget.secciones[k]} plato $i'),
+            ),
           ),
         ],
       ],
@@ -73,12 +85,19 @@ class _CartaState extends State<_Carta> with SaltoASecciones<_Carta> {
   }
 }
 
-Future<void> _montarCarta(WidgetTester tester, List<String> secciones, int platos) async {
+Future<void> _montarCarta(
+  WidgetTester tester,
+  List<String> secciones,
+  int platos, {
+  double Function(int seccion, int plato)? alturaPlato,
+}) async {
   tester.view.physicalSize = const Size(360, 640);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   await tester.pumpWidget(MaterialApp(
-    home: Scaffold(body: _Carta(secciones: secciones, platos: platos)),
+    home: Scaffold(
+      body: _Carta(secciones: secciones, platos: platos, alturaPlato: alturaPlato),
+    ),
   ));
 }
 
@@ -202,6 +221,41 @@ void main() {
       // Ni tapado por la barra ni con un hueco encima.
       expect(arriba, closeTo(kAltoBarraSecciones, 1));
       expect(_chipsMarcados(tester), ['S4']);
+    });
+
+    testWidgets('con platos de alturas distintas llega a la sección y no a la de antes',
+        (tester) async {
+      // El reporte: «toco Bebidas y me sale Hamburguesas». La carta no
+      // construye lo que está lejos, así que el salto calcula la posición de
+      // un encabezado con el alto ESTIMADO de los platos que no ha visto. Los
+      // de verdad no miden lo mismo (los primeros sin foto, los de más abajo
+      // con foto y dos renglones) y el salto se quedaba corto: el chip decía
+      // «Bebidas» y en pantalla seguían las hamburguesas.
+      // Nombres de dos letras (Entradas, Hamburguesas, Perros, Bebidas,
+      // Postres): en la fuente de pruebas cada letra mide 13 px, y así los
+      // cinco chips caben en 360 px sin desplazar la barra.
+      const carta = ['En', 'Ha', 'Pe', 'Be', 'Po'];
+      await _montarCarta(
+        tester,
+        carta,
+        8,
+        alturaPlato: (seccion, plato) => seccion == 0 ? 70 : (plato.isEven ? 150 : 230),
+      );
+
+      await tester.tap(find.text('Be'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Encabezado Be'), findsOneWidget);
+      expect(tester.getTopLeft(find.text('Encabezado Be')).dy,
+          closeTo(kAltoBarraSecciones, 1));
+      expect(_chipsMarcados(tester), ['Be']);
+
+      // Y de vuelta hacia arriba, con lo de abajo ya medido y lo de arriba no.
+      await tester.tap(find.text('Ha'));
+      await tester.pumpAndSettle();
+      expect(tester.getTopLeft(find.text('Encabezado Ha')).dy,
+          closeTo(kAltoBarraSecciones, 1));
+      expect(_chipsMarcados(tester), ['Ha']);
     });
 
     testWidgets('en una carta corta el chip se marca aunque no haya a dónde bajar',
