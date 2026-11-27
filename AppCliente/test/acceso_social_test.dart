@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:nexum_client/features/auth/presentation/widgets/acceso_social.dart';
 
 /// Qué botones de acceso se pintan. Se lee en la pantalla por la que se ENTRA
@@ -97,6 +98,58 @@ void main() {
         'google': {'clientId': 'web.apps.googleusercontent.com'},
       });
       expect(p.google, isTrue);
+    });
+  });
+
+  group('qué se dice cuando Google no deja entrar', () {
+    test('cerrar la ventana no dice nada', () {
+      expect(motivoDeFalloGoogle(GoogleSignInExceptionCode.canceled, null), isNull);
+      expect(
+        motivoDeFalloGoogle(
+          GoogleSignInExceptionCode.canceled,
+          'activity is cancelled by the user.',
+        ),
+        isNull,
+      );
+      expect(motivoDeFalloGoogle(GoogleSignInExceptionCode.interrupted, null), isNull);
+    });
+
+    // El caso del reporte: Android lo manda como CANCELADO y antes se callaba.
+    test('la app que Google no reconoce SÍ se dice, aunque venga como cancelado', () {
+      final m = motivoDeFalloGoogle(
+        GoogleSignInExceptionCode.canceled,
+        '[16] Account reauth failed.',
+      );
+      expect(m, isNotNull);
+      expect(m, contains('tu número'));
+      expect(
+        motivoDeFalloGoogle(
+          GoogleSignInExceptionCode.unknownError,
+          '[28444] Developer console is not set up correctly.',
+        ),
+        m,
+      );
+      expect(
+        motivoDeFalloGoogle(GoogleSignInExceptionCode.providerConfigurationError, null),
+        m,
+      );
+    });
+
+    test('sin cuenta de Google en el teléfono se dice qué hacer', () {
+      expect(
+        motivoDeFalloGoogle(
+          GoogleSignInExceptionCode.unknownError,
+          'No credential available: no credentials',
+        ),
+        contains('Ajustes'),
+      );
+    });
+
+    test('lo demás cae al mensaje genérico', () {
+      expect(
+        motivoDeFalloGoogle(GoogleSignInExceptionCode.unknownError, 'algo raro'),
+        kGoogleFalloGenerico,
+      );
     });
   });
 }

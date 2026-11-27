@@ -121,6 +121,42 @@ Future<void> _iniciarGoogle(String clientId) {
   });
 }
 
+const kGoogleFalloGenerico =
+    'No pudimos entrar con Google. Intenta de nuevo o usa tu número.';
+
+/// Qué decirle a la persona cuando Google no la deja entrar, o `null` si no
+/// hay nada que decir (cerró la ventana).
+///
+/// OJO con «cancelado»: en Android, Credential Manager reporta como
+/// CANCELACIÓN el fallo de una app que Google no reconoce («[16] Account
+/// reauth failed» — la huella de la firma no está registrada en la consola de
+/// Google). Tratarlo como «cerró la ventana» dejaba el botón mudo: se tocaba,
+/// salía y entraba la hoja de cuentas, y no pasaba nada, sin un solo aviso.
+/// Por eso solo se calla la cancelación SIN ese código.
+@visibleForTesting
+String? motivoDeFalloGoogle(GoogleSignInExceptionCode code, String? descripcion) {
+  final d = (descripcion ?? '').toLowerCase();
+  final appNoReconocida = d.contains('[16]') ||
+      d.contains('reauth') ||
+      d.contains('[28444]') ||
+      d.contains('developer console');
+  if (appNoReconocida ||
+      code == GoogleSignInExceptionCode.clientConfigurationError ||
+      code == GoogleSignInExceptionCode.providerConfigurationError) {
+    return 'Entrar con Google no está disponible en esta versión de la app. '
+        'Mientras lo resolvemos, entra con tu número.';
+  }
+  if (code == GoogleSignInExceptionCode.canceled ||
+      code == GoogleSignInExceptionCode.interrupted) {
+    return null;
+  }
+  if (d.contains('no credential')) {
+    return 'No encontramos una cuenta de Google en este teléfono. '
+        'Agrégala en Ajustes o entra con tu número.';
+  }
+  return kGoogleFalloGenerico;
+}
+
 class BotonesAccesoSocial extends ConsumerStatefulWidget {
   const BotonesAccesoSocial({
     required this.terminosAceptados,
@@ -188,14 +224,11 @@ class _BotonesAccesoSocialState extends ConsumerState<BotonesAccesoSocial> {
   }
 
   void _errorGoogle(Object e) {
-    // Cerrar la ventana de Google no es un error: no se dice nada.
-    if (e is GoogleSignInException &&
-        (e.code == GoogleSignInExceptionCode.canceled ||
-            e.code == GoogleSignInExceptionCode.interrupted)) {
-      return;
-    }
     debugPrint('[AccesoSocial] Google: $e');
-    _mostrar('No pudimos entrar con Google. Intenta de nuevo o usa tu número.');
+    final motivo = e is GoogleSignInException
+        ? motivoDeFalloGoogle(e.code, e.description)
+        : kGoogleFalloGenerico;
+    if (motivo != null) _mostrar(motivo);
   }
 
   Future<void> _apple(ProveedoresAcceso p) async {

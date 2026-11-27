@@ -48,6 +48,22 @@ notificaciones), en https://console.cloud.google.com → *APIs y servicios*.
 5. Probar: `/health` debe decir `accesoSocial: google`; en la app aparece
    «Continuar con Google» bajo la casilla de términos.
 
+### Si el botón aparece pero no deja entrar
+
+Casi siempre es la huella: el cliente **Android** del paso 3 tiene que tener
+las DOS SHA-1, en el MISMO proyecto que el id web de `GOOGLE_OAUTH_CLIENT_IDS`:
+
+- **Clave de carga** (la de los APK que se instalan directo y la que firma el
+  AAB): `BE:43:56:0E:CB:21:B4:2D:99:A7:5A:3C:B5:6F:B0:FA:05:B5:21:76`.
+- **Clave de firma de la app** de Play (lo que instala quien baja la app de
+  Play, incluida la prueba cerrada): Play Console → la app → *Probar y
+  publicar → Configuración → Integridad de la app → Firma de apps*. Es OTRA
+  huella; sin ella Google rechaza a todo el que instaló desde Play.
+
+Android lo reporta como «cancelado» (`[16] Account reauth failed`); la app lo
+dice como «Entrar con Google no está disponible en esta versión de la app».
+Tras agregar la huella no hace falta compilar de nuevo: tarda unos minutos.
+
 ## Apple (requiere cuenta Apple Developer, US$99/año)
 
 Sin esa cuenta no se puede activar. Cuando exista (https://developer.apple.com):
