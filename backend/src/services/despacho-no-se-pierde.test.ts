@@ -78,9 +78,15 @@ describe('los arreglos siguen donde tienen que estar', () => {
     expect(m).not.toContain('}, OFFER_TIMEOUT_MS);');
   });
 
-  it('«ya llevas un mandado» se pregunta a la base, no al mapa en memoria', () => {
+  // Antes la regla era «un solo mandado a la vez», preguntado a la base. Cambió
+  // a propósito (pedido del dueño: un local tarda 20 o 30 minutos y mientras
+  // tanto el repartidor deja hecho otro): ahora se admiten varios encargos con
+  // un TOPE, y el tope se sigue contando en la base — nunca en el mapa en
+  // memoria, que se quedaba puesto si el cliente cancelaba.
+  it('el tope de encargos se cuenta en la base, no en el mapa en memoria', () => {
     const ws = fuente('websocket/ws.handler.ts');
-    expect(ws).toContain('sigue != null && sigue.driverId === driverId && sigue.abierto');
+    expect(ws).toContain('await cabeOtroEncargo(driverId)');
+    expect(ws).not.toContain('driverActiveErrandIdMap.get(driverId)');
     expect(ws).not.toContain("message: 'Already handling an errand'");
   });
 

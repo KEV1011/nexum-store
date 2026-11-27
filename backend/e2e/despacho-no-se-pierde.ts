@@ -332,16 +332,27 @@ async function main(): Promise<void> {
       segundo.driverId === cerca.id && segundo.status === 'ACCEPTED',
       `driverId=${segundo.driverId} status=${segundo.status}`);
 
-    // Lo que NO se puede romper: con un mandado de verdad en curso, no acepta otro.
-    await prisma.driver.update({ where: { id: cerca.id }, data: { status: 'ONLINE' } });
+    // Antes, con un mandado en curso no aceptaba otro. Cambió a propósito:
+    // un local tarda 20 o 30 minutos y mientras tanto va por otro. Lo que NO
+    // se puede romper es el TOPE (3 encargos), contado en la base.
     const m3 = await pedirMandado();
     c1.enviar({ type: 'accept_errand', errandId: m3 });
     await esperar(900);
-    comprobar('con un mandado abierto no puede aceptar otro',
-      (await prisma.errand.findUniqueOrThrow({ where: { id: m3 } })).driverId == null);
+    comprobar('con un mandado abierto ya puede aceptar otro',
+      (await prisma.errand.findUniqueOrThrow({ where: { id: m3 } })).driverId === cerca.id);
+    const m4 = await pedirMandado();
+    c1.enviar({ type: 'accept_errand', errandId: m4 });
+    await esperar(900);
+    comprobar('y un tercero',
+      (await prisma.errand.findUniqueOrThrow({ where: { id: m4 } })).driverId === cerca.id);
+    const m5 = await pedirMandado();
+    c1.enviar({ type: 'accept_errand', errandId: m5 });
+    await esperar(900);
+    comprobar('con 3 encargos abiertos no acepta un cuarto',
+      (await prisma.errand.findUniqueOrThrow({ where: { id: m5 } })).driverId == null);
     comprobar('y se le dice por qué, en español',
-      c1.de('offer_gone').some((x) => x['id'] === m3 && /mandado en curso/.test(String(x['message']))));
-    matching.cancelSearchRetry(`errand:${m3}`);
+      c1.de('offer_gone').some((x) => x['id'] === m5 && /encargos/.test(String(x['message']))));
+    for (const id of [m3, m4, m5]) matching.cancelSearchRetry(`errand:${id}`);
     await c1.cerrar();
   } finally {
     await limpiar().catch((e) => console.log('limpieza:', (e as Error).message));

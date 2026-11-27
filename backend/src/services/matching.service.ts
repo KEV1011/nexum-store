@@ -154,7 +154,12 @@ const CHAIN_NEAR_DEST_M = Number(process.env['CHAIN_NEAR_DEST_M'] ?? 1_500);
 // repartidor que va con un pedido puede pasar por otro que ya está listo, o
 // llevarse dos del mismo local. Ver `_sqlPedidoApilado` para las reglas.
 
-/** Cuántos pedidos puede llevar abiertos a la vez un repartidor. */
+/**
+ * Cuántos ENCARGOS (pedidos de un comercio + compras/mandados) puede llevar
+ * abiertos a la vez un repartidor. Se cuentan juntos: para quien reparte son
+ * lo mismo — una bolsa que recoger en un local y entregar —, y hoy la mayoría
+ * de los locales venden como compra por mandado.
+ */
 export const PEDIDOS_SIMULTANEOS_MAX = Math.max(
   1, Math.floor(Number(process.env['PEDIDOS_SIMULTANEOS_MAX'] ?? 3)) || 3,
 );
@@ -311,10 +316,10 @@ export async function aceptacionTardia(
   const cuando = _ofrecidoA.get(`${kind}:${id}`)?.get(driverId);
   if (cuando == null || Date.now() - cuando > OFERTA_TARDIA_MS) return false;
   const d = await prisma.driver.findUnique({ where: { id: driverId }, select: { status: true } });
-  // Ocupado solo vale si sigue pudiendo llevarse uno más: un pedido apilado
+  // Ocupado solo vale si sigue pudiendo llevarse uno más: un encargo apilado
   // (ver `_sqlPedidoApilado`). Un viaje encadenado tardío NO: entre la oferta y
   // este momento ya pudo aceptar otro, y serían dos pasajeros a la vez.
-  if (d?.status !== 'ONLINE' && !(kind === 'order' && await puedeApilarPedido(driverId))) {
+  if (d?.status !== 'ONLINE' && !(kind !== 'trip' && await puedeApilarPedido(driverId))) {
     return false;
   }
   // Se la lleva él: la insistencia programada ya no hace falta.
@@ -482,18 +487,19 @@ function _sqlEncadenado(): Prisma.Sql {
 }
 
 /**
- * El repartidor que YA lleva pedidos y puede llevarse otro.
+ * El repartidor que YA lleva encargos y puede llevarse otro.
  *
- * Solo para pedidos (quien llama decide: no se usa en viajes ni mandados):
+ * Para pedidos de comercio Y compras/mandados (quien llama decide: no se usa
+ * en viajes). Un local tarda 20 o 30 minutos en preparar; mientras tanto el
+ * repartidor deja hecho el pedido en otro, o recoge uno que ya está listo.
  *
  *   · lo tiene activado (`acceptsChained`, el mismo interruptor «Enlazar
  *     servicios» de los viajes encadenados: quien no quiere encadenar tampoco
  *     quiere apilar);
- *   · lo que tiene abierto son SOLO pedidos. Con un pasajero a bordo no se
- *     desvía a un local, y un mandado es una compra con su plata y su lista:
- *     mezclarlo con otro pedido es como se pierde una de las dos cosas;
- *   · lleva al menos uno y menos de `PEDIDOS_SIMULTANEOS_MAX`. Más de tres
- *     y el último pedido llega frío;
+ *   · lo que tiene abierto son SOLO encargos (pedidos y mandados). Con un
+ *     pasajero a bordo no se desvía a un local;
+ *   · lleva al menos uno y menos de `PEDIDOS_SIMULTANEOS_MAX`, contando
+ *     pedidos y mandados juntos. Más de tres y el último llega frío;
  *   · y está a menos de `PEDIDO_APILADO_RADIO_M` del local nuevo — cerca de
  *     verdad, no solo dentro del radio de búsqueda de 5 km.
  *
@@ -516,19 +522,33 @@ function _sqlPedidoApilado(lat: number | null, lng: number | null): Prisma.Sql {
       WHERE t."driverId" = d."id"
         AND t."status" NOT IN ('COMPLETED', 'CANCELLED', 'SCHEDULED')
     )
-    AND NOT EXISTS (
-      SELECT 1 FROM "errands" e
-      WHERE e."driverId" = d."id" AND e."status" NOT IN ('DELIVERED', 'CANCELLED')
-    )
-    AND (
-      SELECT count(*) FROM "orders" o
-      WHERE o."driverId" = d."id" AND o."status" NOT IN ('DELIVERED', 'CANCELLED')
-    ) BETWEEN 1 AND ${PEDIDOS_SIMULTANEOS_MAX - 1}
+    AND ${_sqlEncargosAbiertos()} BETWEEN 1 AND ${PEDIDOS_SIMULTANEOS_MAX - 1}
     ${cerca}
   )`;
 }
 
-/** ¿Este repartidor ocupado puede llevarse un pedido más? (sin mirar distancia) */
+/** Pedidos de comercio + mandados abiertos del repartidor `d`. */
+function _sqlEncargosAbiertos(): Prisma.Sql {
+  return Prisma.sql`(
+    (SELECT count(*) FROM "orders" o
+      WHERE o."driverId" = d."id" AND o."status" NOT IN ('DELIVERED', 'CANCELLED'))
+    + (SELECT count(*) FROM "errands" e
+      WHERE e."driverId" = d."id" AND e."status" NOT IN ('DELIVERED', 'CANCELLED'))
+  )`;
+}
+
+/**
+ * ¿Le cabe un encargo más? Lo mira quien ACEPTA un mandado: el despacho ya
+ * solo se lo ofrece a quien puede llevarlo, pero entre la oferta y el toque
+ * pudo aceptar otro, y pasarse del tope es como el último llega frío.
+ */
+export async function cabeOtroEncargo(driverId: string): Promise<boolean> {
+  const r = await prisma.$queryRaw<Array<{ n: bigint | number }>>`
+    SELECT ${_sqlEncargosAbiertos()} AS n FROM "drivers" d WHERE d."id" = ${driverId}`;
+  return Number(r[0]?.n ?? 0) < PEDIDOS_SIMULTANEOS_MAX;
+}
+
+/** ¿Este repartidor ocupado puede llevarse un encargo más? (sin mirar distancia) */
 export async function puedeApilarPedido(driverId: string): Promise<boolean> {
   const r = await prisma.$queryRaw<Array<{ ok: boolean }>>`
     SELECT ${_sqlPedidoApilado(null, null)} AS ok FROM "drivers" d WHERE d."id" = ${driverId}`;
@@ -541,7 +561,7 @@ export async function puedeApilarPedido(driverId: string): Promise<boolean> {
  * en una sola vuelta.
  */
 function _sqlMismoLocal(lat: number, lng: number): Prisma.Sql {
-  return Prisma.sql`EXISTS (
+  return Prisma.sql`(EXISTS (
     SELECT 1 FROM "orders" o JOIN "businesses" b ON b."id" = o."businessId"
     WHERE o."driverId" = d."id"
       AND o."status" IN ('DRIVER_TO_PICKUP', 'AT_PICKUP')
@@ -551,7 +571,17 @@ function _sqlMismoLocal(lat: number, lng: number): Prisma.Sql {
             ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
             ${MISMO_LOCAL_M}
           )
-  )`;
+  ) OR EXISTS (
+    SELECT 1 FROM "errands" e
+    WHERE e."driverId" = d."id"
+      AND e."status" IN ('ACCEPTED', 'SHOPPING')
+      AND e."pickupLat" IS NOT NULL AND e."pickupLng" IS NOT NULL
+      AND ST_DWithin(
+            ST_SetSRID(ST_MakePoint(e."pickupLng", e."pickupLat"), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+            ${MISMO_LOCAL_M}
+          )
+  ))`;
 }
 
 /**
@@ -680,11 +710,11 @@ export async function findNearestAvailableDrivers(
   const bloqueos = _sqlBloqueos(userId);
 
   const encadenado = _sqlEncadenado();
-  // Pedidos apilados: solo cuando lo que se ofrece es un pedido.
-  const apilado = serviceKind === 'order'
+  // Encargos apilados: pedidos de comercio y compras/mandados, nunca viajes.
+  const apilado = serviceKind === 'order' || serviceKind === 'errand'
     ? _sqlPedidoApilado(originLat, originLng)
     : Prisma.sql`false`;
-  const penalizacion = serviceKind === 'order'
+  const penalizacion = serviceKind === 'order' || serviceKind === 'errand'
     ? Prisma.sql`CASE WHEN d."status" = 'ON_TRIP' AND NOT ${_sqlMismoLocal(originLat, originLng)}
                       THEN ${PEDIDO_APILADO_PENALIZACION_M} ELSE 0 END`
     : Prisma.sql`0`;

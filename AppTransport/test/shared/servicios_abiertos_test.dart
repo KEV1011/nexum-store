@@ -129,4 +129,18 @@ void main() {
     expect(esPedidoApilado(v, p1), isFalse);
     expect(esPedidoApilado(p2, null), isFalse);
   });
+
+  // Un local tarda 20 o 30 minutos: con una compra (mandado) en la mano el
+  // repartidor también puede llevarse otro encargo, y al revés. Lo que no se
+  // apila es un pasajero.
+  test('mandados y pedidos se apilan entre sí; un viaje no', () {
+    final p = ServicioAbierto.fromJson(pedido('p1'))!.solicitud!;
+    final m = ServicioAbierto.fromJson(mandado())!.solicitud!;
+    final v = ServicioAbierto.fromJson(viaje())!.solicitud!;
+    expect(esPedidoApilado(m, p), isTrue);
+    expect(esPedidoApilado(p, m), isTrue);
+    expect(esPedidoApilado(m, m), isTrue);
+    expect(esPedidoApilado(m, v), isFalse);
+    expect(esPedidoApilado(v, m), isFalse);
+  });
 }

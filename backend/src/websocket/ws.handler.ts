@@ -92,6 +92,8 @@ import {
   onOrderAccept,
   aceptacionTardia,
   onOrderDeclineOrTimeout,
+  cabeOtroEncargo,
+  PEDIDOS_SIMULTANEOS_MAX,
 } from '../services/matching.service';
 import {
   WsMessage,
@@ -108,7 +110,7 @@ import {
   registerAvisoDeChat,
 } from '../services/trip-chat.service';
 import { initBus, publishDelivery, BusTarget } from '../lib/bus';
-import { liberarConductorOcioso } from '../lib/liberar-conductor';
+import { liberarConductorOcioso, liberarConductorSiNoTieneMas } from '../lib/liberar-conductor';
 import { recibeAviso, type RolPortal } from '../lib/permisos-portal';
 import { registerCerrarSesionPersonal, resolverAccesoPortal } from '../services/personal.service';
 
@@ -319,24 +321,16 @@ async function handleAcceptErrand(ws: WebSocket, errandId: string): Promise<void
     sendTo(ws, { type: 'error', message: 'Driver not authenticated' });
     return;
   }
-  // «Ya llevas un mandado»: se pregunta a la BASE, no a un mapa en memoria.
-  //
-  // El mapa solo se limpiaba cuando el propio mandadero cerraba el mandado por
-  // este socket. Si lo cancelaba el cliente, o un administrador, la entrada se
-  // quedaba puesta y él no podía aceptar NINGÚN mandado más —ni las compras a
-  // los locales que todavía no son clientes— hasta cerrar la app: tocaba
-  // «Aceptar», el servidor contestaba este error en inglés y no pasaba nada.
-  const activeErrand = driverActiveErrandIdMap.get(driverId);
-  if (activeErrand && activeErrand !== errandId) {
-    const sigue = await getClientErrandRaw(activeErrand);
-    if (sigue != null && sigue.driverId === driverId && sigue.abierto) {
-      avisarOfertaPerdida(
-        ws, 'errand', errandId,
-        'Ya llevas un mandado en curso. Termínalo antes de aceptar otro.',
-      );
-      return;
-    }
-    driverActiveErrandIdMap.delete(driverId);
+  // Varios encargos a la vez SÍ (un local tarda 20 o 30 minutos y mientras
+  // tanto se deja otro pedido hecho), pero con tope: se cuenta en la BASE,
+  // pedidos y mandados juntos — el mapa en memoria de antes solo admitía uno y
+  // se quedaba puesto si el cliente cancelaba.
+  if (!(await cabeOtroEncargo(driverId))) {
+    avisarOfertaPerdida(
+      ws, 'errand', errandId,
+      `Ya llevas ${PEDIDOS_SIMULTANEOS_MAX} encargos. Entrega uno antes de aceptar otro.`,
+    );
+    return;
   }
 
   // Solo el conductor con la oferta activa puede aceptar (cierra el ciclo de
@@ -430,8 +424,10 @@ async function handleErrandStatus(
 
     if (terminal) {
       if (senderId) driverActiveErrandIdMap.delete(senderId);
-      // Libera al conductor (estaba ON_TRIP) para recibir nuevos servicios.
-      void getTripService().setDriverStatus('online', senderId);
+      // Libera al conductor SOLO si no lleva otro encargo: con varios a la vez,
+      // ponerlo «libre» al entregar uno lo dejaría recibiendo de todo con
+      // bolsas en la mano.
+      if (senderId) void liberarConductorSiNoTieneMas(senderId);
     }
   }
 }

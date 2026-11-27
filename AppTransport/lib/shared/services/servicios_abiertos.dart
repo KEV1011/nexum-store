@@ -130,7 +130,11 @@ List<ServicioAbierto> otrosServicios(
   return todos.where((s) => !(s.id == id && s.tipo == tipo)).toList();
 }
 
-/// Una oferta encadenada que se APILA (otro pedido mientras lleva un pedido)
-/// en vez de quedar en cola para después: se acepta y se atiende a la vez.
+/// Una oferta encadenada que se APILA (otro encargo —pedido o mandado—
+/// mientras lleva un encargo) en vez de quedar en cola para después: se acepta
+/// y se atiende a la vez. Un local tarda 20 o 30 minutos en preparar; mientras
+/// tanto el repartidor va por otro o deja otro preparando.
 bool esPedidoApilado(TripRequestEntity oferta, TripRequestEntity? actual) =>
-    oferta.isOrder && (actual?.isOrder ?? false);
+    _esEncargo(oferta) && actual != null && _esEncargo(actual);
+
+bool _esEncargo(TripRequestEntity r) => r.isOrder || r.isErrand;

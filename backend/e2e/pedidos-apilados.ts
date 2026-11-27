@@ -8,9 +8,13 @@
  *      oferta va marcada `chained`, para que la app no le tape la pantalla).
  *   2. El orden: uno LIBRE le gana a uno ocupado algo más cerca (penalización),
  *      salvo que el ocupado esté en ESE MISMO local.
- *   3. Lo que NO: con el máximo de pedidos, con un pasajero o un mandado
- *      abierto, con «Enlazar servicios» apagado, lejos del local, o si lo que
+ *   3. Lo que NO: con el máximo de encargos (pedidos + mandados), con un
+ *      pasajero, con «Enlazar servicios» apagado, lejos del local, o si lo que
  *      se ofrece es un VIAJE.
+ *   3b. Mandados: un mandado abierto ya NO lo saca (un local tarda 20 o 30
+ *      minutos y mientras tanto va por otro); con un mandado le llega otro
+ *      mandado y otro pedido; el mandado cuenta para el tope de 3; y
+ *      entregar un mandado con otro encargo abierto lo deja «en viaje».
  *   4. Aceptar el segundo y entregar los dos: tras el primero sigue «en viaje»
  *      (le queda otro), tras el último vuelve a estar en línea.
  *   5. El diagnóstico lo da por despachable.
@@ -34,17 +38,19 @@ async function main(): Promise<void> {
   const { placeClientOrder, acceptOrderByBusiness, acceptClientOrder } =
     await import('../src/services/client.service');
   const { createBusinessProduct, updateBusinessLocation } = await import('../src/services/business.service');
-  const { driverUpdateOrderStatus } = await import('../src/services/estado-por-conductor.service');
+  const { driverUpdateOrderStatus, driverUpdateErrandStatus } = await import('../src/services/estado-por-conductor.service');
   const matching = await import('../src/services/matching.service');
   const { diagnoseMatching } = await import('../src/services/admin.service');
+  const { requestClientErrand } = await import('../src/services/errand.service');
 
   const ofertas: Array<{ id: string; type: string; orderId?: string; chained?: boolean }> = [];
   matching.registerSendToDriver((id, msg) => {
-    const m = msg as { type: string; order?: { id: string }; chained?: boolean };
-    ofertas.push({ id, type: m.type, orderId: m.order?.id, chained: m.chained });
+    const m = msg as { type: string; order?: { id: string }; errand?: { id: string }; chained?: boolean };
+    ofertas.push({ id, type: m.type, orderId: m.order?.id ?? m.errand?.id, chained: m.chained });
     return true;
   });
-  const ofertasDe = (orderId: string) => ofertas.filter((o) => o.type === 'order_request' && o.orderId === orderId);
+  const ofertasDe = (orderId: string) => ofertas.filter((o) =>
+    (o.type === 'order_request' || o.type === 'errand_request') && o.orderId === orderId);
 
   await prisma.municipality.upsert({
     where: { slug: 'pamplona' }, update: { lat: P.lat, lng: P.lng, isActive: true },
@@ -104,7 +110,7 @@ async function main(): Promise<void> {
   } as never)).id;
   const asignar = (orderId: string, driverId: string, status: 'DRIVER_TO_PICKUP' | 'IN_TRANSIT' = 'DRIVER_TO_PICKUP') =>
     prisma.order.update({ where: { id: orderId }, data: { driverId, status, driverName: 'X' } });
-  const candidatos = async (p: { lat: number; lng: number }, kind: 'order' | 'trip' = 'order') =>
+  const candidatos = async (p: { lat: number; lng: number }, kind: 'order' | 'trip' | 'errand' = 'order') =>
     (await matching.findNearestAvailableDrivers(p.lat, p.lng, 5_000, 10, 120, kind))
       .map((c) => c.driverId).filter((id) => id === ocupado.id || id === libre.id);
   const ponerEn = (id: string, p: { lat: number; lng: number }) => matching.updateDriverGeo(id, p.lat, p.lng);
@@ -166,8 +172,23 @@ async function main(): Promise<void> {
       serviceFee: 3000, updatedAt: new Date(),
     } as never,
   });
-  comprobar('con un mandado abierto no se le ofrece', !(await candidatos(B)).includes(ocupado.id));
-  await prisma.errand.delete({ where: { id: mandado.id } });
+  // Antes un mandado abierto lo sacaba del despacho; ahora cuenta como un
+  // encargo más (pedido + mandado = 2, por debajo del tope de 3).
+  comprobar('con un pedido y un mandado abiertos todavía le llega otro pedido',
+    (await candidatos(B)).includes(ocupado.id));
+  comprobar('y también otro mandado', (await candidatos(B, 'errand')).includes(ocupado.id));
+  comprobar('cabe otro encargo (2 de 3)', await matching.cabeOtroEncargo(ocupado.id));
+  const mandado2 = await prisma.errand.create({
+    data: {
+      requestRef: `E2-${m}`, userId: cliente.id, driverId: ocupado.id, status: 'SHOPPING',
+      category: 'OTHER', description: 'x', pickupAddress: 'x', dropoffAddress: 'y',
+      serviceFee: 3000, updatedAt: new Date(),
+    } as never,
+  });
+  comprobar('con 3 encargos (1 pedido + 2 mandados) ya no le llega nada',
+    !(await candidatos(B)).includes(ocupado.id) && !(await candidatos(B, 'errand')).includes(ocupado.id)
+    && !(await matching.cabeOtroEncargo(ocupado.id)));
+  await prisma.errand.deleteMany({ where: { id: { in: [mandado.id, mandado2.id] } } });
 
   const extra1 = await pedido(nA.id, nA.prod);
   const extra2 = await pedido(nA.id, nA.prod);
@@ -215,6 +236,47 @@ async function main(): Promise<void> {
   comprobar('un pedido cercano: lo da por despachable', fila?.dispatchable === true, `motivo=${fila?.motivo}`);
   const filaViaje = (await diagnoseMatching(B.lat, B.lng, 'trip')).find((d) => d.id === ocupado.id);
   comprobar('un viaje: no', filaViaje?.dispatchable === false);
+
+  console.log('\n── 6. Mandados: lleva una compra y le llega otra ──');
+  // El caso del reporte: un local tarda 20 o 30 min; mientras tanto va por
+  // otro. Solo con un mandado (sin pedidos) en la mano.
+  await prisma.order.update({ where: { id: a2 }, data: { status: 'CANCELLED' } });
+  const enMano = await prisma.errand.create({
+    data: {
+      requestRef: `E3-${m}`, userId: cliente.id, driverId: ocupado.id, status: 'ACCEPTED',
+      category: 'OTHER', description: 'Compra en A', pickupAddress: 'x', dropoffAddress: 'y',
+      pickupLat: A.lat, pickupLng: A.lng, serviceFee: 3000, deliveryPin: '4821', updatedAt: new Date(),
+    } as never,
+  });
+  await prisma.driver.update({ where: { id: ocupado.id }, data: { status: 'ON_TRIP' } });
+  await ponerEn(ocupado.id, alNorte(A, 200));
+  const nuevo = await requestClientErrand(cliente.id, {
+    category: 'other' as never, description: 'Compra en B', pickupAddress: 'Local B', dropoffAddress: 'Casa',
+    pickupLat: B.lat, pickupLng: B.lng, dropoffLat: P.lat + 0.004, dropoffLng: P.lng - 0.003,
+  });
+  await matching.startErrandMatchingCycle(nuevo.id, B.lat, B.lng);
+  await esperar(800);
+  const oM = ofertasDe(nuevo.id);
+  comprobar('el mandado nuevo se le ofrece al que ya lleva una compra',
+    oM.length === 1 && oM[0]?.id === ocupado.id, `ofertas=${JSON.stringify(oM)}`);
+  comprobar('y va marcado como encadenado', oM[0]?.chained === true);
+  matching.cancelSearchRetry(`errand:${nuevo.id}`);
+  await prisma.errand.update({ where: { id: nuevo.id }, data: { driverId: ocupado.id, status: 'ACCEPTED' } });
+
+  // Entregar uno con otro abierto: sigue «en viaje»; el último lo libera.
+  const entregarMandado = async (id: string) => {
+    const e = await prisma.errand.findUniqueOrThrow({ where: { id } });
+    await driverUpdateErrandStatus(ocupado.id, id, 'on_the_way');
+    await driverUpdateErrandStatus(ocupado.id, id, 'delivered', 5000, e.deliveryPin ?? undefined);
+  };
+  await entregarMandado(enMano.id);
+  const trasM1 = await prisma.driver.findUniqueOrThrow({ where: { id: ocupado.id } });
+  comprobar('tras entregar un mandado con otro abierto sigue «en viaje»', trasM1.status === 'ON_TRIP', `status=${trasM1.status}`);
+  await entregarMandado(nuevo.id);
+  const trasM2 = await prisma.driver.findUniqueOrThrow({ where: { id: ocupado.id } });
+  comprobar('tras el último vuelve a estar en línea', trasM2.status === 'ONLINE', `status=${trasM2.status}`);
+  const filaM = (await diagnoseMatching(B.lat, B.lng, 'errand')).find((d) => d.id === ocupado.id);
+  comprobar('el diagnóstico de mandados lo da por despachable', filaM?.dispatchable === true, `motivo=${filaM?.motivo}`);
 
   for (const id of [b1]) matching.cancelSearchRetry(`order:${id}`);
   await limpiar();
