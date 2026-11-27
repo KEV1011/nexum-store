@@ -39,12 +39,12 @@ export function motivoDeDiagnostico(c: {
   apilable?: boolean;
 }): string | null {
   if (c.status === 'OFFLINE') return 'Desconectado';
-  if (c.status === 'ON_TRIP' && !(c.tipo === 'order' && c.apilable)) {
+  if (c.status === 'ON_TRIP' && !((c.tipo === 'order' || c.tipo === 'errand') && c.apilable)) {
     if (c.enViajeVacio) {
       return 'Marcado «en viaje» sin ningún servicio abierto (se corrige solo con su próximo latido de GPS)';
     }
-    return c.tipo === 'order'
-      ? 'En un servicio: solo recibe otro pedido si lleva solo pedidos, menos del máximo, '
+    return c.tipo === 'order' || c.tipo === 'errand'
+      ? 'En un servicio: solo recibe otro encargo si lleva solo pedidos o mandados, menos del máximo, '
         + 'tiene «Enlazar servicios» activado y está cerca del local'
       : 'En un servicio (solo recibe encadenados al terminar)';
   }

@@ -40,6 +40,7 @@ import 'package:nexum_driver/features/trip_requests/domain/entities/trip_request
 import 'package:nexum_driver/shared/services/notification_service.dart';
 import 'package:nexum_driver/shared/services/driver_ws_service.dart';
 import 'package:nexum_driver/shared/models/oferta_mapper.dart';
+import 'package:nexum_driver/features/active_trip/presentation/widgets/pedidos_en_curso_sheet.dart';
 import 'package:nexum_driver/shared/services/servicios_abiertos.dart';
 import 'package:nexum_driver/features/driver_status/presentation/widgets/servicio_abierto_sheet.dart';
 import 'package:nexum_driver/shared/services/location_service.dart';
@@ -215,6 +216,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ref.read(driverProfileProvider.notifier).load();
         // ¿Quedó un servicio abierto de antes de que la app se cerrara?
         unawaited(_revisarServiciosAbiertos());
+        unawaited(_refrescarEncargos());
+        // Se refresca mientras está en el inicio: al entregar uno o aceptar
+        // otro la lista cambia sin que nadie toque nada.
+        _encargosTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+          if (mounted && ref.read(activeTripProvider) == null) {
+            unawaited(_refrescarEncargos());
+          }
+        });
         // El intermunicipal está aplazado y su interruptor deshabilitado, así
         // que ya no hace falta consultar su estado al abrir el home. La carga
         // se restituye junto con el `onChanged` cuando se rehabilite.
@@ -261,6 +270,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _encargosTimer?.cancel();
     _wsTripSub?.cancel();
     _wsErrandSub?.cancel();
     _wsOrderSub?.cancel();
@@ -429,7 +439,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // Subscribe to incoming errand requests from the server.
     _wsErrandSub = DriverWsService().errandRequests.listen((errandMap) {
-      if (!mounted || errandMap[kEsEncadenado] == true) return;
+      if (!mounted) return;
+      // Igual que los pedidos: un mandado apilado es de la pantalla del viaje
+      // si está delante; si no, es una oferta normal del inicio.
+      if (errandMap[kEsEncadenado] == true && ref.read(activeTripProvider) != null) return;
       final request = ofertaDeMandado(errandMap);
       if (request != null) _onTripRequest(request);
     });
@@ -649,6 +662,31 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// vuelve a crear al ir y volver de un servicio, y preguntar cada vez
   /// pondría la hoja delante cada vez que el conductor vuelve al inicio).
   static bool _serviciosAbiertosRevisados = false;
+
+  /// Los encargos que lleva abiertos según el servidor, para la tarjeta
+  /// «Tus encargos» del panel: con varios aceptados (un local tarda 20 o 30
+  /// minutos) el inicio es donde vuelve entre uno y otro, y sin esta lista no
+  /// vería los demás.
+  List<ServicioAbierto> _encargos = const [];
+  Timer? _encargosTimer;
+
+  Future<void> _refrescarEncargos() async {
+    try {
+      final todos = await listarServiciosAbiertos();
+      if (!mounted) return;
+      setState(() => _encargos = todos.where((s) => s.tipo != 'trip').toList());
+    } catch (_) {
+      // Sin red: se queda lo que había.
+    }
+  }
+
+  Future<void> _abrirEncargos() async {
+    await _refrescarEncargos();
+    if (!mounted || _encargos.isEmpty) return;
+    final elegido = await mostrarPedidosEnCurso(context, _encargos);
+    if (elegido == null || !mounted) return;
+    await _retomarServicio(elegido);
+  }
 
   /// Si la app se cerró a mitad de un servicio, al volver no lo recordaba: el
   /// cliente esperaba a alguien que no iba a llegar, y el conductor quedaba
@@ -1042,6 +1080,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   .select((s) => s.profile?.blockedReason)),
               onTap: () => context.push(AppRoutes.verification),
             ),
+            const SizedBox(height: AppConstants.spacingM),
+          ],
+
+          if (_encargos.isNotEmpty) ...[
+            _EncargosEnCursoBanner(n: _encargos.length, onTap: _abrirEncargos),
             const SizedBox(height: AppConstants.spacingM),
           ],
 
@@ -3450,6 +3493,56 @@ class _UbicacionRespaldoBanner extends StatelessWidget {
               ),
               const Icon(Icons.chevron_right_rounded,
                   color: Color(0xFFB45309), size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// «Tus encargos (N)»: los pedidos y mandados que lleva abiertos. Toca y ve
+/// la lista para entrar a uno.
+class _EncargosEnCursoBanner extends StatelessWidget {
+  const _EncargosEnCursoBanner({required this.n, required this.onTap});
+
+  final int n;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.primary,
+      borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppConstants.radiusMedium),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              const Icon(Icons.shopping_bag_rounded, color: textoSobreMarca),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      tituloDeEncargos(n),
+                      style: const TextStyle(
+                        color: textoSobreMarca,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Text(
+                      'Toca para ver la lista y entrar a uno',
+                      style: TextStyle(color: textoSobreMarca, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: textoSobreMarca),
             ],
           ),
         ),

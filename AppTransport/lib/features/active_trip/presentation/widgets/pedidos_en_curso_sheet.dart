@@ -4,18 +4,20 @@ import 'package:nexum_driver/app/theme/app_colors.dart';
 import 'package:nexum_driver/shared/services/servicios_abiertos.dart';
 import 'package:nexum_driver/shared/widgets/hoja_deslizable.dart';
 
-/// Los otros pedidos que lleva, para cambiar a uno.
+/// La lista de los encargos que lleva (pedidos y mandados), para cambiar a uno.
 ///
-/// En un pueblo los locales quedan a dos cuadras: el repartidor que va con un
-/// pedido recibe otro cercano, o un segundo del mismo local. La pantalla del
-/// viaje enseña UNO —el que está atendiendo— y desde aquí pasa al otro. Cada
-/// uno conserva su fase en el servidor, así que volver a él lo deja donde iba.
+/// Un local tarda 20 o 30 minutos en preparar: mientras tanto el repartidor va
+/// por otro, o deja otro preparando. La pantalla del viaje enseña UNO —el que
+/// está atendiendo— y desde aquí ve todos y pasa a otro. Cada uno conserva su
+/// fase en el servidor, así que volver a él lo deja donde iba.
 ///
-/// Devuelve el elegido, o null si cierra la hoja.
+/// [actual] es el que está en pantalla (va arriba, sin poder elegirlo); en el
+/// inicio no hay ninguno. Devuelve el elegido, o null si cierra la hoja.
 Future<ServicioAbierto?> mostrarPedidosEnCurso(
   BuildContext context,
-  List<ServicioAbierto> otros,
-) {
+  List<ServicioAbierto> otros, {
+  ServicioAbierto? actual,
+}) {
   return showModalBottomSheet<ServicioAbierto>(
     context: context,
     isScrollControlled: true,
@@ -23,17 +25,23 @@ Future<ServicioAbierto?> mostrarPedidosEnCurso(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
-    builder: (ctx) => envolverHoja(ctx, _Contenido(otros)),
+    builder: (ctx) => envolverHoja(ctx, _Contenido(otros, actual)),
   );
 }
 
+/// «Tus encargos (3)»: cuenta el que está en pantalla y los demás.
+String tituloDeEncargos(int total) =>
+    total == 1 ? 'Tu encargo en curso' : 'Tus encargos ($total)';
+
 class _Contenido extends StatelessWidget {
-  const _Contenido(this.otros);
+  const _Contenido(this.otros, this.actual);
 
   final List<ServicioAbierto> otros;
+  final ServicioAbierto? actual;
 
   @override
   Widget build(BuildContext context) {
+    final total = otros.length + (actual == null ? 0 : 1);
     return SafeArea(
       top: false,
       child: Padding(
@@ -43,7 +51,7 @@ class _Contenido extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(
-              otros.length == 1 ? 'Llevas otro pedido' : 'Llevas ${otros.length} pedidos más',
+              tituloDeEncargos(total),
               style: TextStyle(
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
@@ -52,15 +60,18 @@ class _Contenido extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'Toca uno para atenderlo. El que dejas queda donde iba.',
+              actual == null
+                  ? 'Toca uno para atenderlo. Cada uno sigue donde iba.'
+                  : 'Toca otro para atenderlo. El que dejas queda donde iba.',
               style: TextStyle(fontSize: 14, color: context.textSecondaryColor),
             ),
             const SizedBox(height: 12),
+            if (actual != null) _Fila(actual!, enPantalla: true),
             for (final s in otros) _Fila(s),
             const SizedBox(height: 4),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Seguir con este'),
+              child: Text(actual == null ? 'Cerrar' : 'Seguir con este'),
             ),
           ],
         ),
@@ -70,19 +81,24 @@ class _Contenido extends StatelessWidget {
 }
 
 class _Fila extends StatelessWidget {
-  const _Fila(this.s);
+  const _Fila(this.s, {this.enPantalla = false});
 
   final ServicioAbierto s;
+  final bool enPantalla;
 
   @override
   Widget build(BuildContext context) {
     final r = s.solicitud;
-    // Yendo al local importa el local; con el pedido en la mano, la entrega.
+    // Yendo al local importa el local; con el encargo en la mano, la entrega.
+    // En un pedido el «pasajero» de la oferta es el NEGOCIO; en un mandado el
+    // local es el punto de recogida.
     final donde = r == null
         ? ''
         : s.fase == 'en_curso'
             ? 'Entregar en ${r.destination.address}'
-            : 'Recoger en ${r.passenger.name}';
+            : s.tipo == 'errand'
+                ? 'Recoger en ${r.origin.address}'
+                : 'Recoger en ${r.passenger.name}';
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
@@ -90,7 +106,7 @@ class _Fila extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          onTap: () => Navigator.of(context).pop(s),
+          onTap: enPantalla ? () => Navigator.of(context).pop() : () => Navigator.of(context).pop(s),
           child: Padding(
             padding: const EdgeInsets.all(14),
             child: Row(
@@ -102,7 +118,11 @@ class _Fila extends StatelessWidget {
                     color: AppColors.primary.withValues(alpha: 0.14),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.shopping_bag_rounded, color: AppColors.primary, size: 22),
+                  child: Icon(
+                    s.tipo == 'errand' ? Icons.shopping_cart_rounded : Icons.shopping_bag_rounded,
+                    color: AppColors.primary,
+                    size: 22,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -119,7 +139,7 @@ class _Fila extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        s.faseTexto,
+                        enPantalla ? 'Lo estás atendiendo · ${s.faseTexto}' : s.faseTexto,
                         style: TextStyle(fontSize: 13, color: context.textSecondaryColor),
                       ),
                       if (donde.isNotEmpty)
@@ -132,7 +152,8 @@ class _Fila extends StatelessWidget {
                     ],
                   ),
                 ),
-                Icon(Icons.chevron_right_rounded, color: context.textSecondaryColor),
+                if (!enPantalla)
+                  Icon(Icons.chevron_right_rounded, color: context.textSecondaryColor),
               ],
             ),
           ),

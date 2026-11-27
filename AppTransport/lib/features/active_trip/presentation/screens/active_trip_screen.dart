@@ -126,6 +126,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   /// Los OTROS pedidos que lleva a la vez (pedidos apilados), según el servidor.
   List<ServicioAbierto> _otros = const [];
 
+  /// El que está en pantalla, tal como lo cuenta el servidor (para ponerlo
+  /// arriba en la lista de encargos).
+  ServicioAbierto? _actualEnServidor;
+
   /// El id con que esta pantalla etiquetó el GPS (ver `dispose`).
   String? _miIdWs;
   int _segundosOferta = 0;
@@ -148,7 +152,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
         // reenvíe al mapa del pasajero (driver_location).
         DriverWsService().activeTripId = trip.request.id;
         _miIdWs = trip.request.id;
-        if (trip.request.isOrder) unawaited(_refrescarOtros());
+        if (trip.request.isOrder || trip.request.isErrand) unawaited(_refrescarOtros());
         if (trip.isToPickup && !trip.request.isOrder && !trip.request.isErrand) {
           // El pasajero ve "Conductor en camino" (ARRIVING) desde que arranca
           // la navegación al pickup; antes se saltaba directo a ARRIVED.
@@ -315,7 +319,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     if (esPedidoApilado(oferta, ref.read(activeTripProvider)?.request)) {
       AppSnackbar.showSuccess(
         context,
-        'Aceptado. Lo tienes en «Pedidos en curso».',
+        'Aceptado. Lo tienes en «Tus encargos».',
       );
       unawaited(_refrescarOtros());
       return;
@@ -349,7 +353,12 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     try {
       final todos = await listarServiciosAbiertos();
       if (!mounted) return;
-      setState(() => _otros = otrosServicios(todos, ref.read(activeTripProvider)?.request));
+      final actual = ref.read(activeTripProvider)?.request;
+      final otros = otrosServicios(todos, actual);
+      setState(() {
+        _otros = otros;
+        _actualEnServidor = todos.where((s) => !otros.contains(s)).firstOrNull;
+      });
     } catch (_) {
       // Sin red: se queda lo que había. El servidor sigue sabiendo qué lleva.
     }
@@ -362,7 +371,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
   Future<void> _abrirPedidosEnCurso() async {
     await _refrescarOtros();
     if (!mounted || _otros.isEmpty) return;
-    final elegido = await mostrarPedidosEnCurso(context, _otros);
+    final elegido = await mostrarPedidosEnCurso(context, _otros, actual: _actualEnServidor);
     final solicitud = elegido?.solicitud;
     if (elegido == null || solicitud == null || !mounted) return;
     await ref.read(activeTripProvider.notifier).retomar(solicitud, elegido.fase);
@@ -1008,9 +1017,10 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
     );
   }
 
-  /// «Pedidos en curso (N)»: debajo de la de navegar, en la misma franja libre.
+  /// «Tus encargos (N)»: debajo de la de navegar, en la misma franja libre.
+  /// Cuenta el que está en pantalla y los demás que lleva.
   Widget _buildPedidosEnCursoPill() {
-    final n = _otros.length;
+    final n = _otros.length + 1;
     return Positioned(
       top: MediaQuery.of(context).padding.top + 112,
       left: AppConstants.spacingM,
@@ -1029,7 +1039,7 @@ class _ActiveTripScreenState extends ConsumerState<ActiveTripScreen>
                 const Icon(Icons.shopping_bag_rounded, size: 18, color: textoSobreMarca),
                 const SizedBox(width: 6),
                 Text(
-                  n == 1 ? '1 pedido más' : '$n pedidos más',
+                  tituloDeEncargos(n),
                   style: const TextStyle(
                     color: textoSobreMarca,
                     fontSize: 13,
