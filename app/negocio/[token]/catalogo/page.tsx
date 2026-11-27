@@ -191,6 +191,44 @@ const INPUT =
 // ya trae `w-full`, y apilar `w-24` encima deja al navegador eligiendo entre
 // dos anchos según el orden de la hoja de Tailwind — aquí ganaba `w-full` y
 // el campo del precio aplastaba al del nombre hasta hacerlo inservible.
+/**
+ * Cuánto cabe en la descripción de un producto. Antes eran 140 en un campo de
+ * un solo renglón, y los platos con muchos ingredientes («carne de res, pollo
+ * desmechado, tocineta, doble queso, maduro, papa ripio y salsas de la casa»)
+ * no cabían: el dueño tenía que recortar lo que el cliente quiere leer. 600 es
+ * el mismo tope que aplica «Revisar mi catálogo» al guardar una descripción.
+ */
+const LARGO_DESCRIPCION = 600
+
+/** La descripción en varios renglones, con lo que queda a la vista. */
+function CampoDescripcion({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder: string
+}) {
+  return (
+    <div>
+      <textarea
+        className={`${INPUT} resize-y`}
+        rows={3}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        maxLength={LARGO_DESCRIPCION}
+        placeholder={placeholder}
+      />
+      {value.length > LARGO_DESCRIPCION - 100 ? (
+        <p className="mt-0.5 text-right text-[11px] text-slate-400">
+          {value.length}/{LARGO_DESCRIPCION}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 const ANCHO_NUMERO = 'inline-block w-16 shrink-0'
 const ANCHO_PRECIO = 'inline-block w-24 shrink-0'
 const ANCHO_FLEXIBLE = 'min-w-0 flex-1'
@@ -637,7 +675,7 @@ function ProductCard({
                 <input className={INPUT} type="datetime-local" value={eHasta} onChange={(e) => setEHasta(e.target.value)} title="Hasta cuándo dura la promoción. Vacío = sin fecha de fin." />
                 <input className={INPUT} list="cat-list" value={eCategory} onChange={(e) => setECategory(e.target.value)} maxLength={40} placeholder="Sección" />
               </div>
-              <input className={INPUT} value={eDescription} onChange={(e) => setEDescription(e.target.value)} maxLength={140} placeholder="Descripción" />
+              <CampoDescripcion value={eDescription} onChange={setEDescription} placeholder="Descripción o ingredientes" />
               <ElegirCampana
                 campanas={campanas}
                 campanaId={eCampana}
@@ -1401,8 +1439,12 @@ export default function CatalogoPage({ params }: { params: Promise<{ token: stri
               onChange={(e) => setCategory(e.target.value)}
               maxLength={40}
             />
-            <input className={INPUT} placeholder="Descripción (opcional)" value={description} onChange={(e) => setDescription(e.target.value)} maxLength={140} />
           </div>
+          <CampoDescripcion
+            value={description}
+            onChange={setDescription}
+            placeholder="Descripción o ingredientes (opcional)"
+          />
 
           {/* Las adiciones del plato, marcadas desde que nace. Solo donde el
               rubro usa opciones (un supermercado no vende «porción de
